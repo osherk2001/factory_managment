@@ -14,9 +14,10 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
     "db:validate": "prisma validate",
     "db:check": "tsx scripts/check-db.ts",
-    "verify:db": "npm run db:generate && npm run db:check"
+    "verify:db": "npm run db:migrate && npm run db:generate && npm run db:check"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

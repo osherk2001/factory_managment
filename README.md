@@ -1,6 +1,6 @@
 # FactoryFlow
 
-FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 project foundation only.
+FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation and the Phase 2 core database model.
 
 ## Prerequisites
 
@@ -33,14 +33,17 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
    docker compose ps
    ```
 
-4. Generate the Prisma client and verify the connection:
+4. Apply the Phase 2 migration, generate the Prisma client, and verify the connection:
 
    ```powershell
+   npx prisma migrate deploy
    npm run db:generate
    npm run db:check
    ```
 
-   Phase 1 intentionally has no FactoryFlow domain models or migrations. The schema is introduced from `docs/DATABASE.md` in Phase 2.
+   The migration creates the core tenant, identity, production, workflow, tracking, history, audit, and idempotency tables. It also creates the PostgreSQL partial unique index that allows only one active ProductAssignment per Product.
+
+   Migration name: `20260815220009_init_core_database`.
 
 5. Start the Next.js development server:
 
@@ -64,7 +67,7 @@ npm run db:check
 Invoke-RestMethod http://localhost:3000/api/health
 ```
 
-The Playwright smoke test starts a local Next.js server automatically. The health endpoint requires PostgreSQL to be running and the `.env` file to be configured.
+The integration tests require PostgreSQL and an applied migration. The Playwright smoke test starts a local Next.js server automatically. The health endpoint requires PostgreSQL to be running and the `.env` file to be configured.
 
 ## Foundation layout
 
@@ -77,10 +80,10 @@ src/
   modules/             Domain module boundaries for future phases
   lib/                 Database, logging, validation, auth, and i18n infrastructure
   shared/              Cross-module types, errors, and utilities
-prisma/                Phase 1 Prisma client and datasource configuration
-tests/                 Vitest unit tests and Playwright smoke tests
+prisma/                Prisma schema and migration history
+tests/                 Vitest unit/integration tests and Playwright smoke tests
 ```
 
-## Deliberate Phase 1 boundaries
+## Deliberate Phase 2 boundaries
 
-This phase does not include authentication, permissions, the FactoryFlow domain schema, Product lifecycle rules, barcode scanning, workflow behavior, dashboards, or reports. No business requirements have been added beyond the approved documentation.
+This phase does not include authentication flows, permission middleware, Product lifecycle services, barcode scanning, worker or manager dashboards, the workflow business engine, reporting, or seed users. The database foundation preserves the documented domain state and history without implementing application behavior.
