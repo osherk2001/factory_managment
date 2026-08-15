@@ -1,0 +1,11 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Phase 1 intentionally has no domain models.
+// The FactoryFlow schema is introduced from docs/DATABASE.md in Phase 2.
