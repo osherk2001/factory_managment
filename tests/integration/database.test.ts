@@ -618,4 +618,78 @@ describe.sequential("Phase 2 database model", () => {
     expect(platformAudit.actorMembershipId).toBeNull();
     await prisma.auditLog.delete({ where: { id: platformAudit.id } });
   });
+
+  it("requires an all-or-nothing and matching Issue resolver context", async () => {
+    const unresolvedIssue = await prisma.issue.create({
+      data: {
+        organizationId: organizationA.id,
+        productId: productA.id,
+        reportedByUserId: userA.id,
+        reportedByMembershipId: membershipA.id,
+        type: "RESOLVER_CONTEXT_NULL",
+        status: "OPEN",
+      },
+    });
+    expect(unresolvedIssue.resolvedByUserId).toBeNull();
+    expect(unresolvedIssue.resolvedByMembershipId).toBeNull();
+
+    const resolvedIssue = await prisma.issue.create({
+      data: {
+        organizationId: organizationA.id,
+        productId: productA.id,
+        reportedByUserId: userA.id,
+        reportedByMembershipId: membershipA.id,
+        resolvedByUserId: userA.id,
+        resolvedByMembershipId: membershipA.id,
+        type: "RESOLVER_CONTEXT_VALID",
+        status: "RESOLVED",
+        resolvedAt: new Date(),
+      },
+    });
+    expect(resolvedIssue.resolvedByUserId).toBe(userA.id);
+    expect(resolvedIssue.resolvedByMembershipId).toBe(membershipA.id);
+
+    await expect(
+      prisma.issue.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          reportedByUserId: userA.id,
+          reportedByMembershipId: membershipA.id,
+          resolvedByUserId: userA.id,
+          type: "RESOLVER_CONTEXT_MISSING_MEMBERSHIP",
+          status: "RESOLVED",
+        },
+      }),
+    ).rejects.toThrow("Issue_resolver_context_check");
+
+    await expect(
+      prisma.issue.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          reportedByUserId: userA.id,
+          reportedByMembershipId: membershipA.id,
+          resolvedByMembershipId: membershipA.id,
+          type: "RESOLVER_CONTEXT_MISSING_USER",
+          status: "RESOLVED",
+        },
+      }),
+    ).rejects.toThrow("Issue_resolver_context_check");
+
+    await expect(
+      prisma.issue.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          reportedByUserId: userA.id,
+          reportedByMembershipId: membershipA.id,
+          resolvedByUserId: userB.id,
+          resolvedByMembershipId: membershipB.id,
+          type: "RESOLVER_CONTEXT_CROSS_TENANT",
+          status: "RESOLVED",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+  });
 });

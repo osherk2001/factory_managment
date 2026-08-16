@@ -802,6 +802,10 @@ createdAt           TIMESTAMPTZ NOT NULL
 resolvedAt          TIMESTAMPTZ NULL
 ```
 
+`resolvedByUserId` and `resolvedByMembershipId` are either both NULL or both
+populated. When populated, the existing composite foreign key requires the
+resolver User, Membership, and Organization context to match.
+
 Initial status values:
 
 ```text
