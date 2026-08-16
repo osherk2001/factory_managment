@@ -66,8 +66,12 @@ test.describe.serial("Phase 4 authentication flow", () => {
     await page.getByRole("button", { name: "כניסה" }).click();
 
     await expect(page).toHaveURL(/\/app/);
-    await expect(page.getByText(username)).toBeVisible();
-    await expect(page.getByText(organizationName)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: new RegExp(username) }),
+    ).toBeVisible();
+    await expect(
+      page.locator("main").getByText(organizationName),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: "יציאה" }).click();
     await expect(page).toHaveURL(/\/login/);

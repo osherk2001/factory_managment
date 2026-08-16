@@ -179,10 +179,10 @@ test.describe.serial("Phase 5 Product creation flow", () => {
     await expect(page.locator("#product-creation-form")).toBeVisible();
     await page.locator("#productionOrderId").selectOption(productionOrderId);
     await page.locator("#productTypeId").selectOption(productTypeId);
-    await page.locator("#targetAt").fill("2026-09-01T10:00");
-    await expect(page.locator("#targetAtUtc")).toHaveValue(
-      "2026-09-01T07:00:00.000Z",
-    );
+    const localTargetAt = "2026-09-01T10:00";
+    const expectedTargetAt = new Date(localTargetAt).toISOString();
+    await page.locator("#targetAt").fill(localTargetAt);
+    await expect(page.locator("#targetAtUtc")).toHaveValue(expectedTargetAt);
     await page.locator("#create-product-submit").click();
 
     await expect(page.getByTestId("product-created")).toBeVisible();
@@ -200,9 +200,7 @@ test.describe.serial("Phase 5 Product creation flow", () => {
       where: { organizationId, serialNumber },
       select: { targetAt: true },
     });
-    expect(persistedProduct.targetAt?.toISOString()).toBe(
-      new Date("2026-09-01T10:00").toISOString(),
-    );
+    expect(persistedProduct.targetAt?.toISOString()).toBe(expectedTargetAt);
   });
 
   test("denies a signed-in user without products.create", async ({ page }) => {
