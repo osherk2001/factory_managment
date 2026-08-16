@@ -40,13 +40,15 @@ export async function authenticateCredentials(
     },
   });
 
+  const passwordMatches = await verifyPassword(
+    parsedCredentials.data.password,
+    user?.passwordHash ?? null,
+  );
   const valid =
     user?.username !== null &&
     user?.isActive === true &&
-    (await verifyPassword(
-      parsedCredentials.data.password,
-      user?.passwordHash ?? null,
-    ));
+    user?.passwordHash !== null &&
+    passwordMatches;
 
   if (!valid || !user?.username) {
     logger.warn({ event: "login_failed", username }, "Login failed");

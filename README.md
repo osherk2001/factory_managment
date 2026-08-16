@@ -24,7 +24,7 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
 
    Keep `POSTGRES_PASSWORD` and the password in `DATABASE_URL` aligned. The example uses a placeholder value; set a local development password before starting PostgreSQL.
 
-   Set `AUTH_SECRET` to at least 32 random characters. Auth.js uses it to protect the JWT session cookie. Do not commit the real value.
+   Set `AUTH_SECRET` to at least 32 random characters. The example intentionally leaves it blank; Auth.js uses it to protect the JWT session cookie. Production startup rejects missing, short, or documented placeholder values. Do not commit the real value.
 
    `POSTGRES_PORT` is the host port mapped to PostgreSQL. The default is `5432`; choose another free host port if that port is already in use and update the port in `DATABASE_URL` to match.
 
@@ -68,12 +68,11 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
 7. Bootstrap a platform System Admin explicitly when needed:
 
    ```powershell
-   $env:SEED_ENV = "development"
    $env:AUTH_BOOTSTRAP_USERNAME = "platform-admin"
    npm run auth:bootstrap-system-admin
    ```
 
-   The password is read from `AUTH_BOOTSTRAP_PASSWORD` or a hidden prompt. This command does not create a tenant `SYSTEM_ADMIN` role or an Organization Membership.
+   The password is read from `AUTH_BOOTSTRAP_PASSWORD` or a hidden prompt. This command is intentionally usable as an explicit production bootstrap operation; it does not require `SEED_ENV=development`. In production, inject the password from an approved secret manager or use the hidden prompt, never a command-line argument, and remove temporary environment variables afterward. A missing username or password is rejected. A new username creates only a platform System Admin User; an existing System Admin may be reset, while an existing non-System-Admin User is refused. The command never creates a tenant `SYSTEM_ADMIN` role or an Organization Membership.
 
 8. Start the Next.js development server:
 

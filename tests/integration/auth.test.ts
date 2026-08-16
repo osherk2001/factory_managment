@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { randomUUID } from "node:crypto";
 
+import argon2 from "argon2";
 import type { Session } from "next-auth";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +11,7 @@ vi.mock("../../src/auth", () => ({ auth: vi.fn() }));
 import { auth } from "../../src/auth";
 import {
   authenticateCredentials,
+  bootstrapSystemAdmin,
   hashPassword,
   verifyPassword,
 } from "../../src/modules/auth";
@@ -35,6 +37,7 @@ let user: { id: string; username: string };
 let userWithoutMembership: { id: string; username: string };
 let inactiveUser: { id: string; username: string };
 let systemAdmin: { id: string; username: string };
+let bootstrapUserId: string | undefined;
 let membershipA: { id: string };
 let accessRoleA: { id: string };
 let permission: { id: string; code: string };
@@ -161,6 +164,7 @@ describe.sequential("Phase 4 authentication and authorization", () => {
             userWithoutMembership?.id,
             inactiveUser?.id,
             systemAdmin?.id,
+            bootstrapUserId,
           ].filter((id): id is string => Boolean(id)),
         },
       },
@@ -182,6 +186,42 @@ describe.sequential("Phase 4 authentication and authorization", () => {
     await expect(
       verifyPassword("a-different-password", passwordHash),
     ).resolves.toBe(false);
+  });
+
+  it("performs Argon2 verification for unknown and passwordless accounts", async () => {
+    const verifySpy = vi.spyOn(argon2, "verify");
+
+    try {
+      await expect(
+        authenticateCredentials({
+          username: `unknown-timing-${suffix}`,
+          password: "correct-password-123",
+        }),
+      ).resolves.toBeNull();
+      await expect(
+        authenticateCredentials({
+          username: userWithoutMembership.username,
+          password: "correct-password-123",
+        }),
+      ).resolves.toBeNull();
+      await expect(
+        authenticateCredentials({
+          username: userWithoutMembership.username,
+          password: "factoryflow-dummy-password",
+        }),
+      ).resolves.toBeNull();
+
+      expect(verifySpy).toHaveBeenCalledTimes(3);
+      expect(
+        verifySpy.mock.calls.every(
+          ([passwordHash]) =>
+            typeof passwordHash === "string" &&
+            passwordHash.startsWith("$argon2id$"),
+        ),
+      ).toBe(true);
+    } finally {
+      verifySpy.mockRestore();
+    }
   });
 
   it("authenticates valid credentials and rejects every invalid account state", async () => {
@@ -246,6 +286,63 @@ describe.sequential("Phase 4 authentication and authorization", () => {
       where: { id: systemAdmin.id },
       data: { isActive: true },
     });
+  });
+
+  it("creates System Admins, allows System Admin reruns, and refuses promotion", async () => {
+    const bootstrapUsername = `phase4-bootstrap-${suffix}`;
+    const created = await bootstrapSystemAdmin(prisma, {
+      username: bootstrapUsername,
+      passwordHash: "bootstrap-hash-one",
+    });
+    bootstrapUserId = created.id;
+
+    expect(created.created).toBe(true);
+    await expect(
+      prisma.user.findUnique({
+        where: { id: created.id },
+        select: { isSystemAdmin: true, isActive: true, passwordHash: true },
+      }),
+    ).resolves.toEqual({
+      isSystemAdmin: true,
+      isActive: true,
+      passwordHash: "bootstrap-hash-one",
+    });
+    await expect(
+      prisma.membership.count({ where: { userId: created.id } }),
+    ).resolves.toBe(0);
+
+    await prisma.user.update({
+      where: { id: created.id },
+      data: { isActive: false },
+    });
+    const rerun = await bootstrapSystemAdmin(prisma, {
+      username: bootstrapUsername,
+      passwordHash: "bootstrap-hash-two",
+    });
+    expect(rerun.created).toBe(false);
+    await expect(
+      prisma.user.findUnique({
+        where: { id: created.id },
+        select: { isSystemAdmin: true, isActive: true, passwordHash: true },
+      }),
+    ).resolves.toEqual({
+      isSystemAdmin: true,
+      isActive: true,
+      passwordHash: "bootstrap-hash-two",
+    });
+
+    await expect(
+      bootstrapSystemAdmin(prisma, {
+        username: userWithoutMembership.username,
+        passwordHash: "must-not-be-used",
+      }),
+    ).rejects.toThrow(/refusing promotion/);
+    await expect(
+      prisma.user.findUnique({
+        where: { id: userWithoutMembership.id },
+        select: { isSystemAdmin: true, passwordHash: true },
+      }),
+    ).resolves.toEqual({ isSystemAdmin: false, passwordHash: null });
   });
 
   it("resolves one active Membership and rejects inactive or absent tenant context", async () => {

@@ -3,6 +3,12 @@ import { z } from "zod";
 
 export const MIN_PASSWORD_LENGTH = 10;
 
+// This fixed Argon2id hash is used only when no account hash exists, so valid
+// credential attempts still perform password verification without a real user
+// secret being stored in source control.
+const DUMMY_PASSWORD_HASH =
+  "$argon2id$v=19$m=65536,p=4,t=3$xRK0ShlKqCiSuhk/Ue3IeA$QadE3ZG0FkFBVH7OjsW/U02ztLdgCcMthkoyS2xeHzg";
+
 export const passwordSchema = z
   .string()
   .min(
@@ -23,17 +29,16 @@ export async function verifyPassword(
   password: string,
   passwordHash: string | null,
 ): Promise<boolean> {
-  if (!passwordHash) {
-    return false;
-  }
-
   const validatedPassword = passwordSchema.safeParse(password);
   if (!validatedPassword.success) {
     return false;
   }
 
   try {
-    return await argon2.verify(passwordHash, validatedPassword.data);
+    return await argon2.verify(
+      passwordHash ?? DUMMY_PASSWORD_HASH,
+      validatedPassword.data,
+    );
   } catch {
     return false;
   }

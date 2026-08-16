@@ -172,7 +172,9 @@ Never commit:
 Provide `.env.example` with names only, never real values.
 
 Auth.js requires `AUTH_SECRET`. The environment validator requires it in
-production and requires any supplied value to be at least 32 characters.
+production, requires any supplied value to be at least 32 characters, and
+rejects the documented placeholder value. `.env.example` intentionally leaves
+the value blank so copying it cannot create a production-valid shared secret.
 
 ## 14. Logging
 
@@ -185,6 +187,19 @@ Do not log:
 - private keys
 
 Security failures should be structured and traceable without exposing secrets.
+
+The authentication path performs Argon2id verification for syntactically valid
+credentials even when the username is unknown or the account has no usable
+password hash, using a fixed dummy Argon2id hash. Invalid credentials remain a
+single generic user-facing error. Auth.js error and warning logs are sanitized;
+Auth.js debug metadata is not forwarded to application logs.
+
+The `auth:bootstrap-system-admin` command is an explicit bootstrap operation,
+not a development seed operation. It may run in production with a username and
+password supplied by an approved secret manager or hidden prompt. It creates a
+new platform System Admin or resets an existing System Admin, but refuses to
+promote an existing non-System-Admin User and never creates tenant Memberships
+or a tenant `SYSTEM_ADMIN` AccessRole.
 
 ## 15. Audit vs logs
 

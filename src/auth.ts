@@ -27,9 +27,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         "Auth.js warning",
       );
     },
-    debug(message, metadata) {
-      applicationLogger.debug({ event: "authjs_debug", metadata }, message);
-    },
   },
   providers: [
     Credentials({
