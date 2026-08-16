@@ -179,7 +179,6 @@ A future product may receive the newer template version.
 
 The following decisions are not finalized yet:
 
-- whether a Product has one explicit `currentStageId`
 - how the next allowed stage is calculated
 - whether managers can override stage restrictions
 - whether stage transitions require explicit reasons for backward movement

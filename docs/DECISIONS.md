@@ -669,6 +669,91 @@ Authorization responsibilities and factory production functions are different co
 
 ---
 
+### D-033: MVP System Admin is a platform capability on User
+
+Status: Approved
+
+Decision:
+
+The MVP represents platform-level System Admin capability with
+`User.isSystemAdmin`, defaulting to `false`.
+
+`SYSTEM_ADMIN` must not be created as a tenant `AccessRole`. Normal factory
+users, including development fixtures, are not System Admins by default.
+
+Reason:
+
+The MVP needs one explicit platform-level distinction without inventing a
+larger platform-role framework before authentication and platform operations
+are implemented.
+
+Consequence:
+
+This flag may later evolve into a richer platform authorization model without
+changing the meaning of tenant AccessRoles.
+
+---
+
+### D-034: Present User email and username values are globally unique
+
+Status: Approved
+
+Decision:
+
+When present, `User.email` and `User.username` are globally unique. Multiple
+`NULL` values remain valid under PostgreSQL unique constraints.
+
+Usernames are not organization-scoped in the MVP.
+
+Reason:
+
+This gives the upcoming authentication work an unambiguous identity rule
+without inventing tenant-specific username behavior.
+
+---
+
+### D-035: Workflow stage references include Product ownership
+
+Status: Approved
+
+Decision:
+
+`WorkflowSnapshotStage` stores its owning Product identity, derived from its
+`WorkflowSnapshot`. Product current-stage, assignment-stage, and transition-
+stage references use composite foreign keys that include Organization,
+Product, and stage identity.
+
+Repeated visits, backward movement, and rework remain valid because no
+uniqueness rule is added to ProductTransition history.
+
+Reason:
+
+Organization-scoped stage foreign keys alone cannot prevent Product A from
+referencing a stage in Product B's snapshot.
+
+---
+
+### D-036: Tenant actors retain Membership context
+
+Status: Approved
+
+Decision:
+
+Tenant ProductTransitions, Issues, WeightEvents, AuditLogs, and
+IdempotencyKeys retain both the actor User identity and the actor's
+Organization Membership. Composite foreign keys require those values to
+agree.
+
+AuditLog also supports platform actions with `organizationId = null` and no
+tenant membership reference.
+
+Reason:
+
+A raw User foreign key does not prove that the actor belongs to the tenant on
+the business record.
+
+---
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

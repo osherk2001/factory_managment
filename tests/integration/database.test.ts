@@ -20,10 +20,13 @@ let organizationB: { id: string };
 let userA: { id: string };
 let userB: { id: string };
 let membershipA: { id: string };
+let membershipB: { id: string };
 let employeeA: { id: string };
 let productionRoleA: { id: string };
 let productA: { id: string };
 let productB: { id: string };
+let productC: { id: string };
+const testUserIds: string[] = [];
 
 async function cleanupOrganization(organizationId: string) {
   await prisma.$transaction([
@@ -108,7 +111,7 @@ describe.sequential("Phase 2 database model", () => {
         status: "ACTIVE",
       },
     });
-    await prisma.membership.create({
+    membershipB = await prisma.membership.create({
       data: {
         organizationId: organizationB.id,
         userId: userB.id,
@@ -146,6 +149,13 @@ describe.sequential("Phase 2 database model", () => {
         status: ProductStatus.CREATED,
       },
     });
+    productC = await prisma.product.create({
+      data: {
+        organizationId: organizationA.id,
+        serialNumber: "PRD-002",
+        status: ProductStatus.CREATED,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -156,7 +166,13 @@ describe.sequential("Phase 2 database model", () => {
       await cleanupOrganization(organizationB.id);
     }
     await prisma.user.deleteMany({
-      where: { id: { in: [userA?.id, userB?.id].filter(Boolean) } },
+      where: {
+        id: {
+          in: [userA?.id, userB?.id, ...testUserIds].filter(
+            (id): id is string => Boolean(id),
+          ),
+        },
+      },
     });
     await prisma.$disconnect();
   });
@@ -295,6 +311,7 @@ describe.sequential("Phase 2 database model", () => {
         organizationId: organizationA.id,
         productId: productA.id,
         recordedByUserId: userA.id,
+        recordedByMembershipId: membershipA.id,
         type: WeightEventType.FINAL,
         grams: new Prisma.Decimal("12.345"),
       },
@@ -370,6 +387,27 @@ describe.sequential("Phase 2 database model", () => {
       data: {
         organizationId: organizationA.id,
         workflowSnapshotId: snapshot.id,
+        productId: productA.id,
+        productionRoleId: productionRoleA.id,
+        sourceStageId: templateStage.id,
+        code: "POLISHING",
+        name: "Polishing",
+        position: 1,
+      },
+    });
+    const otherSnapshot = await prisma.workflowSnapshot.create({
+      data: {
+        organizationId: organizationA.id,
+        productId: productC.id,
+        sourceTemplateId: template.id,
+        sourceVersion: template.version,
+      },
+    });
+    const otherSnapshotStage = await prisma.workflowSnapshotStage.create({
+      data: {
+        organizationId: organizationA.id,
+        workflowSnapshotId: otherSnapshot.id,
+        productId: productC.id,
         productionRoleId: productionRoleA.id,
         sourceStageId: templateStage.id,
         code: "POLISHING",
@@ -378,11 +416,44 @@ describe.sequential("Phase 2 database model", () => {
       },
     });
 
+    await expect(
+      prisma.product.update({
+        where: { id: productA.id },
+        data: { currentStageId: otherSnapshotStage.id },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await expect(
+      prisma.productAssignment.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          employeeId: employeeA.id,
+          productionRoleId: productionRoleA.id,
+          workflowStageId: otherSnapshotStage.id,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await expect(
+      prisma.productTransition.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          actorUserId: userA.id,
+          actorMembershipId: membershipA.id,
+          eventType: ProductTransitionEventType.MANUAL_TRANSFER,
+          toStageId: otherSnapshotStage.id,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
     await prisma.productTransition.create({
       data: {
         organizationId: organizationA.id,
         productId: productA.id,
         actorUserId: userA.id,
+        actorMembershipId: membershipA.id,
         eventType: ProductTransitionEventType.PRODUCT_RECEIVED,
         toStatus: ProductStatus.IN_PROGRESS,
         toStageId: snapshotStage.id,
@@ -394,6 +465,7 @@ describe.sequential("Phase 2 database model", () => {
         organizationId: organizationA.id,
         productId: productA.id,
         actorUserId: userA.id,
+        actorMembershipId: membershipA.id,
         eventType: ProductTransitionEventType.MANUAL_TRANSFER,
         fromStatus: ProductStatus.IN_PROGRESS,
         toStatus: ProductStatus.IN_PROGRESS,
@@ -413,5 +485,137 @@ describe.sequential("Phase 2 database model", () => {
       2,
     );
     expect(transitions[1]?.toStageId).toBe(snapshotStage.id);
+  });
+
+  it("enforces System Admin defaults, explicit elevation, and User identity uniqueness", async () => {
+    const defaultUser = await prisma.user.create({
+      data: { email: `hardening-default-${suffix}@example.test` },
+    });
+    const systemAdmin = await prisma.user.create({
+      data: {
+        email: `hardening-admin-${suffix}@example.test`,
+        username: `hardening-admin-${suffix}`,
+        isSystemAdmin: true,
+      },
+    });
+    testUserIds.push(defaultUser.id, systemAdmin.id);
+
+    expect(defaultUser.isSystemAdmin).toBe(false);
+    expect(systemAdmin.isSystemAdmin).toBe(true);
+
+    const duplicateEmailUser = await prisma.user.create({
+      data: { email: `hardening-email-${suffix}@example.test` },
+    });
+    testUserIds.push(duplicateEmailUser.id);
+    await expect(
+      prisma.user.create({
+        data: { email: duplicateEmailUser.email },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+
+    const duplicateUsernameUser = await prisma.user.create({
+      data: { username: `hardening-username-${suffix}` },
+    });
+    testUserIds.push(duplicateUsernameUser.id);
+    await expect(
+      prisma.user.create({
+        data: { username: duplicateUsernameUser.username },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+
+    const nullIdentityUserA = await prisma.user.create({ data: {} });
+    const nullIdentityUserB = await prisma.user.create({ data: {} });
+    testUserIds.push(nullIdentityUserA.id, nullIdentityUserB.id);
+    expect(nullIdentityUserA.email).toBeNull();
+    expect(nullIdentityUserB.email).toBeNull();
+    expect(nullIdentityUserA.username).toBeNull();
+    expect(nullIdentityUserB.username).toBeNull();
+  });
+
+  it("requires tenant actor membership context for business history", async () => {
+    await expect(
+      prisma.productTransition.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          actorUserId: userB.id,
+          actorMembershipId: membershipB.id,
+          eventType: ProductTransitionEventType.MANUAL_TRANSFER,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    const validTransition = await prisma.productTransition.create({
+      data: {
+        organizationId: organizationA.id,
+        productId: productA.id,
+        actorUserId: userA.id,
+        actorMembershipId: membershipA.id,
+        eventType: ProductTransitionEventType.MANUAL_TRANSFER,
+      },
+    });
+    expect(validTransition.actorMembershipId).toBe(membershipA.id);
+
+    await expect(
+      prisma.issue.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          reportedByUserId: userB.id,
+          reportedByMembershipId: membershipB.id,
+          type: "HARDENING_TEST",
+          status: "OPEN",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await expect(
+      prisma.weightEvent.create({
+        data: {
+          organizationId: organizationA.id,
+          productId: productA.id,
+          recordedByUserId: userB.id,
+          recordedByMembershipId: membershipB.id,
+          type: WeightEventType.FINAL,
+          grams: new Prisma.Decimal("1.000"),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await expect(
+      prisma.idempotencyKey.create({
+        data: {
+          organizationId: organizationA.id,
+          userId: userB.id,
+          actorMembershipId: membershipB.id,
+          key: `hardening-${suffix}`,
+          operation: "hardening-test",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    await expect(
+      prisma.auditLog.create({
+        data: {
+          organizationId: organizationA.id,
+          actorUserId: userB.id,
+          actorMembershipId: membershipB.id,
+          action: "HARDENING_TEST",
+          targetType: "Product",
+          targetId: productA.id,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2003" });
+
+    const platformAudit = await prisma.auditLog.create({
+      data: {
+        organizationId: null,
+        actorUserId: userB.id,
+        action: "HARDENING_PLATFORM_TEST",
+        targetType: "Organization",
+      },
+    });
+    expect(platformAudit.actorMembershipId).toBeNull();
+    await prisma.auditLog.delete({ where: { id: platformAudit.id } });
   });
 });

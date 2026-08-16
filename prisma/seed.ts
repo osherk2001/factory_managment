@@ -560,6 +560,7 @@ export async function seedDevelopmentFixtures(
           email: userFixture.email,
           passwordHash: null,
           isActive: true,
+          isSystemAdmin: false,
         },
         create: {
           id: userFixture.id,
@@ -567,6 +568,7 @@ export async function seedDevelopmentFixtures(
           email: userFixture.email,
           passwordHash: null,
           isActive: true,
+          isSystemAdmin: false,
         },
       });
 

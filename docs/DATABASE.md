@@ -169,6 +169,7 @@ username            VARCHAR NULL
 email               VARCHAR NULL
 passwordHash        VARCHAR NULL
 isActive            BOOLEAN NOT NULL DEFAULT true
+isSystemAdmin       BOOLEAN NOT NULL DEFAULT false
 createdAt           TIMESTAMPTZ NOT NULL
 updatedAt           TIMESTAMPTZ NOT NULL
 ```
@@ -176,6 +177,14 @@ updatedAt           TIMESTAMPTZ NOT NULL
 Authentication-provider-specific fields may be added by the authentication implementation.
 
 Do not store authorization directly on User.
+
+`isSystemAdmin` is the MVP platform-level capability flag. It is not an
+Organization `AccessRole`, and normal tenant users default to `false`. A future
+platform authorization model may replace this flag when the product requires
+more than one platform-level capability.
+
+When present, `email` and `username` are globally unique. PostgreSQL permits
+multiple `NULL` values under these unique constraints.
 
 ## Membership
 
@@ -196,7 +205,12 @@ Constraints:
 
 ```text
 UNIQUE(organizationId, userId)
+UNIQUE(organizationId, id, userId)
 ```
+
+Tenant-scoped actor records retain both the User identity and the Membership
+that proves the User belongs to the Organization. Composite foreign keys use
+`(organizationId, membershipId, userId)` for this purpose.
 
 ## AccessRole
 
@@ -540,7 +554,9 @@ Important:
 
 `version` is reserved for optimistic concurrency control if required by the scan implementation.
 
-`currentStageId` should reference WorkflowSnapshotStage once the workflow snapshot implementation is finalized.
+`currentStageId` references `WorkflowSnapshotStage` together with the Product
+identity. The database therefore requires the stage to belong to the
+WorkflowSnapshot assigned to that same Product.
 
 ## Barcode
 
@@ -642,6 +658,7 @@ Suggested columns:
 id                  UUID PK
 organizationId      UUID FK -> Organization.id
 workflowSnapshotId  UUID FK -> WorkflowSnapshot.id
+productId           UUID FK -> Product.id through WorkflowSnapshot
 productionRoleId    UUID NULL FK -> ProductionRole.id
 sourceStageId       UUID NULL
 code                VARCHAR NOT NULL
@@ -654,7 +671,12 @@ Constraints:
 
 ```text
 UNIQUE(workflowSnapshotId, code)
+UNIQUE(organizationId, productId, id)
 ```
+
+`productId` is materialized from the owning `WorkflowSnapshot` so Product,
+assignment, and transition stage references can use composite foreign keys.
+It is not a workflow-order field and does not make the workflow linear.
 
 ## ProductAssignment
 
@@ -669,7 +691,7 @@ productId           UUID FK -> Product.id
 employeeId          UUID FK -> EmployeeProfile.id
 productionRoleId    UUID FK -> ProductionRole.id
 locationId          UUID NULL FK -> Location.id
-workflowStageId     UUID NULL FK -> WorkflowSnapshotStage.id
+workflowStageId     UUID NULL FK -> WorkflowSnapshotStage.id, scoped to productId
 
 startedAt           TIMESTAMPTZ NOT NULL
 endedAt             TIMESTAMPTZ NULL
@@ -713,6 +735,7 @@ id                  UUID PK
 organizationId      UUID FK -> Organization.id
 productId           UUID FK -> Product.id
 actorUserId         UUID FK -> User.id
+actorMembershipId   UUID FK -> Membership.id
 
 eventType           VARCHAR NOT NULL
 
@@ -755,6 +778,11 @@ MANUAL_TRANSFER
 
 ProductTransition rows are append-only.
 
+For tenant history, `actorMembershipId` is stored alongside `actorUserId`.
+The database requires the Membership, User, and Organization to match through
+a composite foreign key. This prevents a User from another Organization from
+being recorded as the actor.
+
 ## Issue
 
 Suggested columns:
@@ -764,7 +792,9 @@ id                  UUID PK
 organizationId      UUID FK -> Organization.id
 productId           UUID FK -> Product.id
 reportedByUserId    UUID FK -> User.id
+reportedByMembershipId UUID FK -> Membership.id
 resolvedByUserId    UUID NULL FK -> User.id
+resolvedByMembershipId UUID NULL FK -> Membership.id
 type                VARCHAR NOT NULL
 description         TEXT NULL
 status              VARCHAR NOT NULL
@@ -788,6 +818,7 @@ id                  UUID PK
 organizationId      UUID FK -> Organization.id
 productId           UUID FK -> Product.id
 recordedByUserId    UUID FK -> User.id
+recordedByMembershipId UUID FK -> Membership.id
 employeeId          UUID NULL FK -> EmployeeProfile.id
 productionRoleId    UUID NULL FK -> ProductionRole.id
 type                VARCHAR NOT NULL
@@ -820,6 +851,7 @@ Suggested columns:
 id                  UUID PK
 organizationId      UUID NULL FK -> Organization.id
 actorUserId         UUID NULL FK -> User.id
+actorMembershipId   UUID NULL FK -> Membership.id
 action              VARCHAR NOT NULL
 targetType          VARCHAR NOT NULL
 targetId            UUID NULL
@@ -834,6 +866,11 @@ AuditLog is append-only.
 
 Do not store secrets or credentials in audit data.
 
+Tenant AuditLog rows require a matching actor Membership. Platform-level
+AuditLog rows may use `organizationId = NULL` and keep
+`actorMembershipId = NULL`, allowing a System Admin action to retain its User
+identity without pretending to belong to a tenant.
+
 ## IdempotencyKey
 
 Protects state-changing requests from duplicate delivery.
@@ -844,6 +881,7 @@ Suggested columns:
 id                  UUID PK
 organizationId      UUID FK -> Organization.id
 userId              UUID FK -> User.id
+actorMembershipId   UUID FK -> Membership.id
 key                 VARCHAR NOT NULL
 operation           VARCHAR NOT NULL
 requestHash         VARCHAR NULL
@@ -1018,7 +1056,6 @@ The following may be refined during implementation:
 - exact Product serial-number generation strategy
 - whether Product-specific jewelry attributes use typed extension tables or JSONB for the first customer
 - exact WorkflowSnapshot representation
-- exact `currentStageId` implementation
 - whether Product optimistic versioning is required in addition to row locking
 - final retention period for `TRASHED`
 - final barcode symbology

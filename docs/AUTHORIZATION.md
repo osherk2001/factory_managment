@@ -230,6 +230,12 @@ These should not be automatically granted to ordinary workers.
 
 System-level administration remains separate from tenant-level administration.
 
+For the MVP, platform capability is represented explicitly by
+`User.isSystemAdmin`, which defaults to `false`. It is a platform-level flag,
+not a tenant `AccessRole`, and it must not be seeded onto normal factory
+users. This simple representation may later evolve into a richer platform
+authorization model.
+
 System Admin may:
 
 - create Organizations
@@ -238,13 +244,24 @@ System Admin may:
 
 System Admin access must not be implemented as a normal tenant role.
 
-## 11. Default-deny rule
+## 11. User identity uniqueness
+
+Before authentication is implemented, the database establishes the MVP
+identity rule: non-null `User.email` and non-null `User.username` are globally
+unique. Multiple `NULL` values remain allowed by PostgreSQL. Usernames are not
+organization-scoped in this MVP; that choice may be revisited if tenant-
+specific usernames become necessary.
+
+Tenant actions must also retain the actor's Organization Membership context.
+The User identity alone is not sufficient to prove tenant authority.
+
+## 12. Default-deny rule
 
 If permission cannot be proven, deny the operation.
 
 Do not infer permission from job title text.
 
-## 12. Audit
+## 13. Audit
 
 Sensitive authorization and administration actions must be audited.
 

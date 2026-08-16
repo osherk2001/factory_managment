@@ -50,9 +50,10 @@ describe.sequential("Phase 3 development fixtures", () => {
         id: { in: DEVELOPMENT_USER_IDS },
         memberships: { some: { organizationId: organization.id } },
       },
-      select: { passwordHash: true },
+      select: { passwordHash: true, isSystemAdmin: true },
     });
     expect(users.every((user) => user.passwordHash === null)).toBe(true);
+    expect(users.every((user) => user.isSystemAdmin === false)).toBe(true);
     await expect(
       prisma.membership.count({
         where: {

@@ -94,13 +94,14 @@ model Organization {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  username     String?  @db.VarChar(100)
-  email        String?  @db.VarChar(320)
-  passwordHash String?  @db.VarChar(255)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+  id            String   @id @default(uuid()) @db.Uuid
+  username      String?  @unique @db.VarChar(100)
+  email         String?  @unique @db.VarChar(320)
+  passwordHash  String?  @db.VarChar(255)
+  isActive      Boolean  @default(true)
+  isSystemAdmin Boolean  @default(false)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
 
   memberships               Membership[]
   productTransitionsAsActor ProductTransition[] @relation("ProductTransitionActors")
@@ -123,9 +124,16 @@ model Membership {
   user            User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
   employeeProfile EmployeeProfile?
   accessRoleLinks MembershipAccessRole[]
+  productTransitionsAsActor      ProductTransition[] @relation("ProductTransitionActorMembership")
+  issuesReportedAsActor          Issue[]             @relation("IssueReporterMemberships")
+  issuesResolvedAsActor          Issue[]             @relation("IssueResolverMemberships")
+  weightEventsRecordedAsActor    WeightEvent[]       @relation("WeightEventRecorderMemberships")
+  auditLogsAsActorMembership     AuditLog[]          @relation("AuditLogActorMemberships")
+  idempotencyKeysAsActor         IdempotencyKey[]    @relation("IdempotencyKeyActorMemberships")
 
   @@unique([organizationId, userId])
   @@unique([organizationId, id])
+  @@unique([organizationId, id, userId])
   @@index([userId])
   @@index([organizationId, status])
 }
@@ -365,7 +373,7 @@ model Product {
   currentWorker    EmployeeProfile?       @relation("ProductCurrentWorker", fields: [organizationId, currentWorkerId], references: [organizationId, id], onDelete: Restrict)
   currentRole      ProductionRole?        @relation("ProductCurrentRole", fields: [organizationId, currentRoleId], references: [organizationId, id], onDelete: Restrict)
   currentLocation  Location?              @relation("ProductCurrentLocation", fields: [organizationId, currentLocationId], references: [organizationId, id], onDelete: Restrict)
-  currentStage     WorkflowSnapshotStage? @relation("ProductCurrentStage", fields: [organizationId, currentStageId], references: [organizationId, id], onDelete: Restrict)
+  currentStage     WorkflowSnapshotStage? @relation("ProductCurrentStage", fields: [organizationId, id, currentStageId], references: [organizationId, productId, id], onDelete: Restrict)
   workflowSnapshot WorkflowSnapshot?
   barcode          Barcode?
   assignments      ProductAssignment[]
@@ -456,6 +464,7 @@ model WorkflowSnapshot {
   @@unique([productId])
   @@unique([organizationId, productId])
   @@unique([organizationId, id])
+  @@unique([organizationId, id, productId])
   @@index([organizationId, sourceTemplateId])
 }
 
@@ -463,6 +472,7 @@ model WorkflowSnapshotStage {
   id                 String   @id @default(uuid()) @db.Uuid
   organizationId     String   @db.Uuid
   workflowSnapshotId String   @db.Uuid
+  productId          String   @db.Uuid
   productionRoleId   String?  @db.Uuid
   sourceStageId      String?  @db.Uuid
   code               String   @db.VarChar(100)
@@ -471,7 +481,7 @@ model WorkflowSnapshotStage {
   createdAt          DateTime @default(now()) @db.Timestamptz(6)
 
   organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  workflowSnapshot WorkflowSnapshot       @relation(fields: [organizationId, workflowSnapshotId], references: [organizationId, id], onDelete: Restrict)
+  workflowSnapshot WorkflowSnapshot       @relation(fields: [organizationId, workflowSnapshotId, productId], references: [organizationId, id, productId], onDelete: Restrict)
   productionRole   ProductionRole?        @relation(fields: [organizationId, productionRoleId], references: [organizationId, id], onDelete: Restrict)
   sourceStage      WorkflowTemplateStage? @relation(fields: [organizationId, sourceStageId], references: [organizationId, id], onDelete: Restrict)
   currentProducts  Product[]              @relation("ProductCurrentStage")
@@ -481,6 +491,7 @@ model WorkflowSnapshotStage {
 
   @@unique([workflowSnapshotId, code])
   @@unique([organizationId, id])
+  @@unique([organizationId, productId, id])
   @@index([organizationId, workflowSnapshotId, position])
   @@index([organizationId, productionRoleId])
 }
@@ -505,7 +516,7 @@ model ProductAssignment {
   employee       EmployeeProfile        @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
   productionRole ProductionRole         @relation(fields: [organizationId, productionRoleId], references: [organizationId, id], onDelete: Restrict)
   location       Location?              @relation(fields: [organizationId, locationId], references: [organizationId, id], onDelete: Restrict)
-  workflowStage  WorkflowSnapshotStage? @relation(fields: [organizationId, workflowStageId], references: [organizationId, id], onDelete: Restrict)
+  workflowStage  WorkflowSnapshotStage? @relation(fields: [organizationId, productId, workflowStageId], references: [organizationId, productId, id], onDelete: Restrict)
 
   @@index([organizationId, productId, startedAt])
   @@index([organizationId, employeeId, endedAt])
@@ -513,10 +524,11 @@ model ProductAssignment {
 }
 
 model ProductTransition {
-  id             String                     @id @default(uuid()) @db.Uuid
-  organizationId String                     @db.Uuid
-  productId      String                     @db.Uuid
-  actorUserId    String                     @db.Uuid
+  id                String                     @id @default(uuid()) @db.Uuid
+  organizationId    String                     @db.Uuid
+  productId         String                     @db.Uuid
+  actorUserId       String                     @db.Uuid
+  actorMembershipId String                     @db.Uuid
   eventType      ProductTransitionEventType
   fromStatus     ProductStatus?
   toStatus       ProductStatus?
@@ -536,14 +548,15 @@ model ProductTransition {
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   product      Product                @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
   actorUser    User                   @relation("ProductTransitionActors", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorMembership Membership          @relation("ProductTransitionActorMembership", fields: [organizationId, actorMembershipId, actorUserId], references: [organizationId, id, userId], onDelete: Restrict)
   fromWorker   EmployeeProfile?       @relation("ProductTransitionFromWorkers", fields: [organizationId, fromWorkerId], references: [organizationId, id], onDelete: Restrict)
   toWorker     EmployeeProfile?       @relation("ProductTransitionToWorkers", fields: [organizationId, toWorkerId], references: [organizationId, id], onDelete: Restrict)
   fromRole     ProductionRole?        @relation("ProductTransitionFromRoles", fields: [organizationId, fromRoleId], references: [organizationId, id], onDelete: Restrict)
   toRole       ProductionRole?        @relation("ProductTransitionToRoles", fields: [organizationId, toRoleId], references: [organizationId, id], onDelete: Restrict)
   fromLocation Location?              @relation("ProductTransitionFromLocations", fields: [organizationId, fromLocationId], references: [organizationId, id], onDelete: Restrict)
   toLocation   Location?              @relation("ProductTransitionToLocations", fields: [organizationId, toLocationId], references: [organizationId, id], onDelete: Restrict)
-  fromStage    WorkflowSnapshotStage? @relation("ProductTransitionFromStages", fields: [organizationId, fromStageId], references: [organizationId, id], onDelete: Restrict)
-  toStage      WorkflowSnapshotStage? @relation("ProductTransitionToStages", fields: [organizationId, toStageId], references: [organizationId, id], onDelete: Restrict)
+  fromStage    WorkflowSnapshotStage? @relation("ProductTransitionFromStages", fields: [organizationId, productId, fromStageId], references: [organizationId, productId, id], onDelete: Restrict)
+  toStage      WorkflowSnapshotStage? @relation("ProductTransitionToStages", fields: [organizationId, productId, toStageId], references: [organizationId, productId, id], onDelete: Restrict)
 
   @@index([organizationId, productId, occurredAt])
   @@index([organizationId, actorUserId, occurredAt])
@@ -551,42 +564,48 @@ model ProductTransition {
 }
 
 model Issue {
-  id               String      @id @default(uuid()) @db.Uuid
-  organizationId   String      @db.Uuid
-  productId        String      @db.Uuid
-  reportedByUserId String      @db.Uuid
-  resolvedByUserId String?     @db.Uuid
-  type             String      @db.VarChar(100)
-  description      String?     @db.Text
-  status           IssueStatus
-  createdAt        DateTime    @default(now()) @db.Timestamptz(6)
-  resolvedAt       DateTime?   @db.Timestamptz(6)
+  id                     String      @id @default(uuid()) @db.Uuid
+  organizationId         String      @db.Uuid
+  productId              String      @db.Uuid
+  reportedByUserId       String      @db.Uuid
+  reportedByMembershipId String      @db.Uuid
+  resolvedByUserId       String?     @db.Uuid
+  resolvedByMembershipId String?     @db.Uuid
+  type                   String      @db.VarChar(100)
+  description            String?     @db.Text
+  status                 IssueStatus
+  createdAt              DateTime    @default(now()) @db.Timestamptz(6)
+  resolvedAt             DateTime?   @db.Timestamptz(6)
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   product        Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
   reportedByUser User         @relation("IssueReporters", fields: [reportedByUserId], references: [id], onDelete: Restrict)
+  reportedByMembership Membership  @relation("IssueReporterMemberships", fields: [organizationId, reportedByMembershipId, reportedByUserId], references: [organizationId, id, userId], onDelete: Restrict)
   resolvedByUser User?        @relation("IssueResolvers", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  resolvedByMembership Membership? @relation("IssueResolverMemberships", fields: [organizationId, resolvedByMembershipId, resolvedByUserId], references: [organizationId, id, userId], onDelete: Restrict)
 
   @@index([organizationId, productId, status])
   @@index([organizationId, status])
 }
 
 model WeightEvent {
-  id               String          @id @default(uuid()) @db.Uuid
-  organizationId   String          @db.Uuid
-  productId        String          @db.Uuid
-  recordedByUserId String          @db.Uuid
-  employeeId       String?         @db.Uuid
-  productionRoleId String?         @db.Uuid
-  type             WeightEventType
-  grams            Decimal         @db.Decimal(10, 3)
-  note             String?         @db.Text
-  occurredAt       DateTime        @default(now()) @db.Timestamptz(6)
-  createdAt        DateTime        @default(now()) @db.Timestamptz(6)
+  id                    String          @id @default(uuid()) @db.Uuid
+  organizationId        String          @db.Uuid
+  productId             String          @db.Uuid
+  recordedByUserId      String          @db.Uuid
+  recordedByMembershipId String         @db.Uuid
+  employeeId            String?         @db.Uuid
+  productionRoleId      String?         @db.Uuid
+  type                  WeightEventType
+  grams                 Decimal         @db.Decimal(10, 3)
+  note                  String?         @db.Text
+  occurredAt            DateTime        @default(now()) @db.Timestamptz(6)
+  createdAt             DateTime        @default(now()) @db.Timestamptz(6)
 
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   product        Product          @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
   recordedByUser User             @relation("WeightEventRecorders", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  recordedByMembership Membership @relation("WeightEventRecorderMemberships", fields: [organizationId, recordedByMembershipId, recordedByUserId], references: [organizationId, id, userId], onDelete: Restrict)
   employee       EmployeeProfile? @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
   productionRole ProductionRole?  @relation(fields: [organizationId, productionRoleId], references: [organizationId, id], onDelete: Restrict)
 
@@ -595,20 +614,22 @@ model WeightEvent {
 }
 
 model AuditLog {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String?  @db.Uuid
-  actorUserId    String?  @db.Uuid
-  action         String   @db.VarChar(150)
-  targetType     String   @db.VarChar(100)
-  targetId       String?  @db.Uuid
-  beforeData     Json?    @db.JsonB
-  afterData      Json?    @db.JsonB
-  metadata       Json?    @db.JsonB
-  occurredAt     DateTime @default(now()) @db.Timestamptz(6)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String?  @db.Uuid
+  actorUserId       String?  @db.Uuid
+  actorMembershipId String?  @db.Uuid
+  action            String   @db.VarChar(150)
+  targetType        String   @db.VarChar(100)
+  targetId          String?  @db.Uuid
+  beforeData        Json?    @db.JsonB
+  afterData         Json?    @db.JsonB
+  metadata          Json?    @db.JsonB
+  occurredAt        DateTime @default(now()) @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   actorUser    User?         @relation("AuditLogActors", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorMembership Membership? @relation("AuditLogActorMemberships", fields: [organizationId, actorMembershipId, actorUserId], references: [organizationId, id, userId], onDelete: Restrict)
 
   @@index([organizationId, occurredAt])
   @@index([actorUserId, occurredAt])
@@ -616,18 +637,20 @@ model AuditLog {
 }
 
 model IdempotencyKey {
-  id              String    @id @default(uuid()) @db.Uuid
-  organizationId  String    @db.Uuid
-  userId          String    @db.Uuid
-  key             String    @db.VarChar(255)
-  operation       String    @db.VarChar(150)
-  requestHash     String?   @db.VarChar(128)
-  resultReference String?   @db.Uuid
-  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
-  expiresAt       DateTime? @db.Timestamptz(6)
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @db.Uuid
+  userId            String    @db.Uuid
+  actorMembershipId String    @db.Uuid
+  key               String    @db.VarChar(255)
+  operation         String    @db.VarChar(150)
+  requestHash       String?   @db.VarChar(128)
+  resultReference   String?   @db.Uuid
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  expiresAt         DateTime? @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  actorMembership Membership @relation("IdempotencyKeyActorMemberships", fields: [organizationId, actorMembershipId, userId], references: [organizationId, id, userId], onDelete: Restrict)
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, expiresAt])
