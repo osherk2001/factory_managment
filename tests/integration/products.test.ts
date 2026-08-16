@@ -10,7 +10,7 @@ vi.mock("../../src/auth", () => ({ auth: vi.fn() }));
 
 import { auth } from "../../src/auth";
 import { prisma } from "../../src/lib/db/client";
-import { createProduct } from "../../src/modules/products";
+import { createProduct } from "../../src/modules/products/server";
 
 const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
 const authMock = auth as unknown as {
@@ -557,6 +557,84 @@ describe.sequential("Phase 5 Product creation", () => {
       productTypeId: productTypeB.id,
     });
     expect(sameKeyOtherTenant.id).not.toBe(first.id);
+  });
+
+  it("replays the immutable creation snapshot after Product state changes", async () => {
+    await setMockSession(allowedUser);
+    const request = input({ isUrgent: true });
+    const first = await createProduct(request);
+    const storedBefore = await prisma.idempotencyKey.findUniqueOrThrow({
+      where: {
+        organizationId_userId_key: {
+          organizationId: organizationA.id,
+          userId: allowedUser.id,
+          key: request.idempotencyKey,
+        },
+      },
+      select: { resultData: true },
+    });
+
+    expect(storedBefore.resultData).toEqual(first);
+    await prisma.product.update({
+      where: { id: first.id },
+      data: { status: "IN_PROGRESS" },
+    });
+
+    const replay = await createProduct(request);
+    const storedAfter = await prisma.idempotencyKey.findUniqueOrThrow({
+      where: {
+        organizationId_userId_key: {
+          organizationId: organizationA.id,
+          userId: allowedUser.id,
+          key: request.idempotencyKey,
+        },
+      },
+      select: { resultData: true },
+    });
+
+    expect(replay).toEqual(first);
+    expect(storedAfter.resultData).toEqual(storedBefore.resultData);
+    await expect(
+      prisma.product.findUniqueOrThrow({
+        where: { id: first.id },
+        select: { status: true },
+      }),
+    ).resolves.toEqual({ status: "IN_PROGRESS" });
+  });
+
+  it("rejects corrupt stored creation snapshots safely", async () => {
+    await setMockSession(allowedUser);
+    const request = input();
+    const created = await createProduct(request);
+
+    await prisma.idempotencyKey.update({
+      where: {
+        organizationId_userId_key: {
+          organizationId: organizationA.id,
+          userId: allowedUser.id,
+          key: request.idempotencyKey,
+        },
+      },
+      data: { resultData: { id: created.id, status: "IN_PROGRESS" } },
+    });
+
+    await expect(createProduct(request)).rejects.toMatchObject({
+      code: "PRODUCT_CREATION_FAILED",
+    });
+  });
+
+  it("normalizes explicit target offsets and rejects timezone-less input", async () => {
+    await setMockSession(allowedUser);
+    const request = input({ targetAt: "2026-09-01T10:00:00+03:00" });
+    const created = await createProduct(request);
+
+    expect(created.targetAt).toBe("2026-09-01T07:00:00.000Z");
+    await expect(
+      createProduct({ ...request, targetAt: "2026-09-01T07:00:00.000Z" }),
+    ).resolves.toEqual(created);
+    await expect(
+      createProduct(input({ targetAt: "2026-09-01T10:00" })),
+    ).rejects.toMatchObject({ code: "INVALID_PRODUCT_INPUT" });
   });
 
   it("rejects cross-tenant and inactive Product references atomically", async () => {

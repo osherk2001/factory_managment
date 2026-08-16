@@ -127,11 +127,19 @@ Product creation follows the same server trust boundary. The server requires
 validates optional order/type references in the trusted tenant, and performs
 Product, barcode, transition, audit, serial-counter, and idempotency writes in
 one transaction. The Product creation idempotency key is scoped to
-`(organizationId, userId, key)` and changed-payload reuse is rejected.
+`(organizationId, userId, key)` and changed-payload reuse is rejected. The
+completed operation stores an immutable safe response snapshot; exact replays
+validate that JSON with Zod and do not reconstruct it from mutable Product
+state.
 
 Product serials use an atomic tenant/year counter. Barcode identities use
 cryptographically secure random bytes with bounded uniqueness retries and do
 not contain sequential IDs or business data.
+
+Product `targetAt` values are accepted by the server only with an explicit ISO
+timezone or offset. The browser converts its local `datetime-local` value to a
+UTC ISO instant before submission, so the server timezone cannot change the
+meaning of the requested target time.
 
 ## 10. Concurrency and replay
 

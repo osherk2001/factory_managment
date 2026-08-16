@@ -2,7 +2,7 @@ export type CreateProductInput = {
   productionOrderId?: string | null;
   productTypeId?: string | null;
   isUrgent?: boolean;
-  targetAt?: Date | string | null;
+  targetAt?: string | null;
   idempotencyKey: string;
 };
 

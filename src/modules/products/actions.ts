@@ -1,7 +1,8 @@
 "use server";
 
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
-import { createProduct, isProductCreationError } from "@/modules/products";
+import { isProductCreationError } from "@/modules/products";
+import { createProduct } from "@/modules/products/server";
 
 import type { ProductCreationActionState } from "./product-action-types";
 

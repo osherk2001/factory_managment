@@ -1,4 +1,3 @@
-export { createProduct, hashCreateProductRequest } from "./product.service";
 export {
   isProductCreationError,
   ProductCreationError,

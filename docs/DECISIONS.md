@@ -858,6 +858,39 @@ Reason:
 Retries from mobile or browser clients must not create duplicate Products or
 duplicate creation history.
 
+### D-044: Completed idempotent operations retain response snapshots
+
+Status: Approved
+
+Decision:
+
+`IdempotencyKey.resultData` stores the immutable safe response DTO for a
+completed operation. `products.create` validates and returns that snapshot on
+exact replay rather than reconstructing the response from the current Product
+row.
+
+Reason:
+
+The Product may legitimately move from `CREATED` to a later lifecycle state
+before a delayed retry arrives. Replay must preserve the original operation
+result without weakening current Product-state rules.
+
+### D-045: Product target dates are absolute instants
+
+Status: Approved
+
+Decision:
+
+The Product creation boundary accepts `targetAt` only as an ISO datetime with
+an explicit timezone or offset. The browser converts its local
+`datetime-local` value to a UTC ISO string before submission. No Organization
+timezone setting is introduced in this phase.
+
+Reason:
+
+A timezone-less datetime interpreted on the server can represent a different
+instant from the one selected by the user.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

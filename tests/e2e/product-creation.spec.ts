@@ -175,18 +175,33 @@ test.describe.serial("Phase 5 Product creation flow", () => {
   }) => {
     await login(page, allowedUsername);
     await page.goto("/app/products/new");
+    await page.waitForLoadState("networkidle");
     await expect(page.locator("#product-creation-form")).toBeVisible();
     await page.locator("#productionOrderId").selectOption(productionOrderId);
     await page.locator("#productTypeId").selectOption(productTypeId);
+    await page.locator("#targetAt").fill("2026-09-01T10:00");
+    await expect(page.locator("#targetAtUtc")).toHaveValue(
+      "2026-09-01T07:00:00.000Z",
+    );
     await page.locator("#create-product-submit").click();
 
     await expect(page.getByTestId("product-created")).toBeVisible();
-    await expect(page.getByTestId("created-serial")).toHaveText(
-      /^PRD-\d{4}-\d{6}$/,
-    );
+    const serialNumber = await page.getByTestId("created-serial").textContent();
+    expect(serialNumber).toMatch(/^PRD-\d{4}-\d{6}$/);
+    if (!serialNumber) {
+      throw new Error("Product creation did not return a serial number");
+    }
     await expect(page.getByTestId("created-status")).toHaveText("CREATED");
     await expect(page.getByTestId("created-barcode")).toHaveText(
       /^ff_[A-Za-z0-9_-]+$/,
+    );
+
+    const persistedProduct = await prisma.product.findFirstOrThrow({
+      where: { organizationId, serialNumber },
+      select: { targetAt: true },
+    });
+    expect(persistedProduct.targetAt?.toISOString()).toBe(
+      new Date("2026-09-01T10:00").toISOString(),
     );
   });
 

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createHash } from "node:crypto";
 
 import { Prisma, ProductStatus } from "@prisma/client";
@@ -15,20 +17,33 @@ import {
   ProductCreationError,
   PRODUCT_ERROR_CODES,
 } from "./product-errors";
+import { normalizeProductTargetAt } from "./product-date";
 import { allocateProductSerial } from "./serial-number";
 import type { CreatedProductDto, CreateProductInput } from "./product-types";
 
 const PRODUCT_CREATE_OPERATION = "products.create";
+const explicitProductDateTimeSchema = z.iso.datetime({ offset: true });
+
+const storedCreationResultSchema = z
+  .object({
+    id: z.string().uuid(),
+    serialNumber: z.string().regex(/^PRD-\d{4}-\d{6}$/),
+    status: z.literal(ProductStatus.CREATED),
+    barcode: z.string().regex(/^ff_[A-Za-z0-9_-]+$/),
+    productionOrderId: z.string().uuid().nullable(),
+    productTypeId: z.string().uuid().nullable(),
+    isUrgent: z.boolean(),
+    targetAt: explicitProductDateTimeSchema.nullable(),
+    createdAt: explicitProductDateTimeSchema,
+  })
+  .strict();
 
 const createProductInputSchema = z
   .object({
     productionOrderId: z.string().uuid().nullable().optional(),
     productTypeId: z.string().uuid().nullable().optional(),
     isUrgent: z.boolean().default(false),
-    targetAt: z.preprocess(
-      (value) => (value === "" ? null : value),
-      z.coerce.date().nullable().optional(),
-    ),
+    targetAt: explicitProductDateTimeSchema.nullable().optional(),
     idempotencyKey: z.string().trim().min(1).max(255),
   })
   .strict();
@@ -42,7 +57,7 @@ function normalizeInput(input: ParsedCreateProductInput) {
     productionOrderId: input.productionOrderId ?? null,
     productTypeId: input.productTypeId ?? null,
     isUrgent: input.isUrgent,
-    targetAt: input.targetAt?.toISOString() ?? null,
+    targetAt: input.targetAt ? normalizeProductTargetAt(input.targetAt) : null,
   };
 }
 
@@ -109,6 +124,24 @@ function productCreationFailure(
   return new ProductCreationError(PRODUCT_ERROR_CODES.PRODUCT_CREATION_FAILED);
 }
 
+function parseStoredCreationResult(
+  resultReference: string | null,
+  resultData: Prisma.JsonValue | null,
+): CreatedProductDto {
+  const reference = z.string().uuid().safeParse(resultReference);
+  const result = storedCreationResultSchema.safeParse(resultData);
+
+  if (
+    !reference.success ||
+    !result.success ||
+    result.data.id !== reference.data
+  ) {
+    throw new ProductCreationError(PRODUCT_ERROR_CODES.PRODUCT_CREATION_FAILED);
+  }
+
+  return result.data;
+}
+
 async function readProductDto(
   database: ProductReadDatabase,
   context: TenantContext,
@@ -167,6 +200,7 @@ async function findReplay(
       operation: true,
       requestHash: true,
       resultReference: true,
+      resultData: true,
     },
   });
 
@@ -181,21 +215,22 @@ async function findReplay(
     throw new ProductCreationError(PRODUCT_ERROR_CODES.IDEMPOTENCY_CONFLICT);
   }
 
-  if (!existing.resultReference) {
-    throw new ProductCreationError(PRODUCT_ERROR_CODES.PRODUCT_CREATION_FAILED);
-  }
+  const result = parseStoredCreationResult(
+    existing.resultReference,
+    existing.resultData,
+  );
 
   logger.info(
     {
       event: "idempotency_replay",
       userId: context.userId,
       organizationId: context.organizationId,
-      productId: existing.resultReference,
+      productId: result.id,
     },
     "Returning idempotent Product creation result",
   );
 
-  return readProductDto(prisma, context, existing.resultReference);
+  return result;
 }
 
 async function createProductTransaction(
@@ -204,6 +239,8 @@ async function createProductTransaction(
   requestHash: string,
 ): Promise<CreatedProductDto> {
   return prisma.$transaction(async (database) => {
+    const normalizedInput = normalizeInput(input);
+
     await database.idempotencyKey.create({
       data: {
         organizationId: context.organizationId,
@@ -260,16 +297,18 @@ async function createProductTransaction(
     const product = await database.product.create({
       data: {
         organizationId: context.organizationId,
-        productionOrderId: input.productionOrderId ?? null,
-        productTypeId: input.productTypeId ?? null,
+        productionOrderId: normalizedInput.productionOrderId,
+        productTypeId: normalizedInput.productTypeId,
         serialNumber: serial.serialNumber,
         status: ProductStatus.CREATED,
         currentWorkerId: null,
         currentRoleId: null,
         currentLocationId: null,
         currentStageId: null,
-        isUrgent: input.isUrgent,
-        targetAt: input.targetAt ?? null,
+        isUrgent: normalizedInput.isUrgent,
+        targetAt: normalizedInput.targetAt
+          ? new Date(normalizedInput.targetAt)
+          : null,
         completedAt: null,
         cancelledAt: null,
         trashedAt: null,
@@ -320,10 +359,10 @@ async function createProductTransaction(
           serialNumber: serial.serialNumber,
           status: ProductStatus.CREATED,
           barcode: barcodeValue,
-          productionOrderId: input.productionOrderId ?? null,
-          productTypeId: input.productTypeId ?? null,
-          isUrgent: input.isUrgent,
-          targetAt: input.targetAt?.toISOString() ?? null,
+          productionOrderId: normalizedInput.productionOrderId,
+          productTypeId: normalizedInput.productTypeId,
+          isUrgent: normalizedInput.isUrgent,
+          targetAt: normalizedInput.targetAt,
         },
       },
     });
@@ -336,7 +375,7 @@ async function createProductTransaction(
         key: input.idempotencyKey,
         operation: PRODUCT_CREATE_OPERATION,
       },
-      data: { resultReference: product.id },
+      data: { resultReference: product.id, resultData: result },
     });
 
     return result;

@@ -919,6 +919,7 @@ key                 VARCHAR NOT NULL
 operation           VARCHAR NOT NULL
 requestHash         VARCHAR NULL
 resultReference     UUID NULL
+resultData          JSONB NULL
 createdAt           TIMESTAMPTZ NOT NULL
 expiresAt           TIMESTAMPTZ NULL
 ```
@@ -931,9 +932,11 @@ UNIQUE(organizationId, userId, key)
 
 Product creation uses `operation = products.create`, stores a deterministic
 hash of the accepted request fields, and stores the created Product ID in
-`resultReference`. The key is scoped to the trusted tenant and authenticated
-User. An exact replay returns the original safe DTO; a changed request with
-the same key is rejected.
+`resultReference`. It also stores the immutable safe response DTO in
+`resultData`. The key is scoped to the trusted tenant and authenticated User.
+An exact replay validates and returns that stored creation snapshot even when
+the current Product has moved to a later lifecycle state; a changed request
+with the same key is rejected.
 
 ## 6. Current state vs history
 

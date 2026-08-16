@@ -659,6 +659,7 @@ model IdempotencyKey {
   operation         String    @db.VarChar(150)
   requestHash       String?   @db.VarChar(128)
   resultReference   String?   @db.Uuid
+  resultData        Json?     @db.JsonB
   createdAt         DateTime  @default(now()) @db.Timestamptz(6)
   expiresAt         DateTime? @db.Timestamptz(6)
 

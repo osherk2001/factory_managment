@@ -1,10 +1,17 @@
 "use client";
 
-import { useActionState, useRef, type FormEvent, type MouseEvent } from "react";
+import {
+  useActionState,
+  useRef,
+  type ChangeEvent,
+  type FormEvent,
+  type MouseEvent,
+} from "react";
 
 import { defaultLocale, getMessages } from "@/lib/i18n";
 
 import { createProductAction } from "./actions";
+import { normalizeProductTargetAt } from "./product-date";
 import { initialProductCreationActionState } from "./product-action-types";
 
 type ProductOption = { id: string; label: string };
@@ -23,6 +30,7 @@ export function ProductCreationForm({
   productTypes,
 }: ProductCreationFormProps) {
   const idempotencyKey = useRef(initialIdempotencyKey);
+  const targetAtUtcInput = useRef<HTMLInputElement>(null);
   const [state, formAction, isSubmitting] = useActionState(
     createProductAction,
     initialProductCreationActionState,
@@ -37,6 +45,24 @@ export function ProductCreationForm({
     if (hiddenInput instanceof HTMLInputElement) {
       hiddenInput.value = idempotencyKey.current;
     }
+
+    const localTargetInput = form.elements.namedItem("targetAtLocal");
+    const utcTargetInput = form.elements.namedItem("targetAt");
+    if (
+      localTargetInput instanceof HTMLInputElement &&
+      utcTargetInput instanceof HTMLInputElement
+    ) {
+      if (!localTargetInput.value) {
+        utcTargetInput.value = "";
+        return;
+      }
+
+      try {
+        utcTargetInput.value = normalizeProductTargetAt(localTargetInput.value);
+      } catch {
+        utcTargetInput.value = "";
+      }
+    }
   }
 
   function prepareSubmission(event: FormEvent<HTMLFormElement>) {
@@ -46,6 +72,24 @@ export function ProductCreationForm({
   function prepareClick(event: MouseEvent<HTMLButtonElement>) {
     if (event.currentTarget.form) {
       ensureIdempotencyKey(event.currentTarget.form);
+    }
+  }
+
+  function prepareTargetAt(event: ChangeEvent<HTMLInputElement>) {
+    const utcInput = targetAtUtcInput.current;
+    if (!utcInput) {
+      return;
+    }
+
+    if (!event.currentTarget.value) {
+      utcInput.value = "";
+      return;
+    }
+
+    try {
+      utcInput.value = normalizeProductTargetAt(event.currentTarget.value);
+    } catch {
+      utcInput.value = "";
     }
   }
 
@@ -115,6 +159,12 @@ export function ProductCreationForm({
         name="idempotencyKey"
         type="hidden"
       />
+      <input
+        id="targetAtUtc"
+        name="targetAt"
+        ref={targetAtUtcInput}
+        type="hidden"
+      />
 
       <div className="space-y-2">
         <label className="text-sm font-medium" htmlFor="productionOrderId">
@@ -161,7 +211,8 @@ export function ProductCreationForm({
         <input
           className="h-11 w-full rounded-md border bg-background px-3 text-sm"
           id="targetAt"
-          name="targetAt"
+          name="targetAtLocal"
+          onChange={prepareTargetAt}
           type="datetime-local"
         />
       </div>

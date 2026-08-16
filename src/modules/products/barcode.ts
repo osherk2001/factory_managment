@@ -1,3 +1,5 @@
+import "server-only";
+
 import { randomBytes } from "node:crypto";
 
 import { ProductCreationError, PRODUCT_ERROR_CODES } from "./product-errors";
