@@ -806,6 +806,58 @@ Phase 4 does not add Redis or a misleading process-local login limiter. A
 shared production-grade login rate limiter must be implemented before
 production deployment.
 
+### D-041: Product serials use a tenant/year atomic counter
+
+Status: Approved
+
+Decision:
+
+Product creation allocates serials in the format `PRD-YYYY-######`, using the
+current UTC Gregorian year and a `ProductSerialCounter` keyed by
+`(organizationId, year)`. Allocation increments the counter in the same
+transaction as Product creation and fails when the six-digit range is
+exhausted.
+
+Reason:
+
+A count-then-insert approach is unsafe under concurrent creation. The counter
+preserves readable tenant-local serials without a race.
+
+### D-042: Phase 5 barcode identities use random `ff_` values
+
+Status: Approved
+
+Decision:
+
+Product creation stores a globally unique barcode value beginning with `ff_`,
+generated from cryptographically secure random bytes. It is not the Product
+UUID, serial number, or another sequential identifier.
+
+Barcode symbology, rendering, printing, and reprinting remain deferred until
+scanner and printer requirements are approved.
+
+Reason:
+
+Products need a safe identity before scanning is implemented, while the
+physical barcode standard is still unresolved.
+
+### D-043: Product creation is idempotent per tenant and user
+
+Status: Approved
+
+Decision:
+
+Product creation requires an idempotency key scoped by
+`(organizationId, userId, key)`. The service stores a deterministic hash of
+the accepted request fields and the resulting Product ID in the same
+transaction. An exact replay returns the original safe result; reusing a key
+with different fields fails with a conflict.
+
+Reason:
+
+Retries from mobile or browser clients must not create duplicate Products or
+duplicate creation history.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

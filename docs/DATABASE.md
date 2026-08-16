@@ -103,6 +103,7 @@ erDiagram
     ProductionOrder ||--o{ Product : contains
     ProductType ||--o{ Product : classifies
     Organization ||--o{ Product : owns
+    Organization ||--o{ ProductSerialCounter : allocates
 
     Product ||--|| Barcode : has
 
@@ -558,6 +559,31 @@ Important:
 identity. The database therefore requires the stage to belong to the
 WorkflowSnapshot assigned to that same Product.
 
+## ProductSerialCounter
+
+Allocates human-readable Product serials without a concurrent count/latest
+race.
+
+Columns:
+
+```text
+organizationId      UUID FK -> Organization.id
+year                INTEGER
+lastValue           INTEGER NOT NULL DEFAULT 0
+```
+
+Constraints:
+
+```text
+PRIMARY KEY(organizationId, year)
+```
+
+Product creation atomically upserts this row for the current UTC Gregorian
+year and increments `lastValue`. The resulting serial format is
+`PRD-YYYY-######`, with a maximum value of `999999` for each tenant/year.
+Existing serials matching this format are used to initialize the counter when
+the migration is applied.
+
 ## Barcode
 
 One Product has one active barcode identity in the initial model.
@@ -581,7 +607,10 @@ UNIQUE(value)
 UNIQUE(productId)
 ```
 
-The barcode value must not be a sequential Product ID.
+The Phase 5 Product creation flow generates a globally unique, non-sequential
+`ff_` value from cryptographically secure random bytes. The barcode value must
+not be a sequential Product ID or a serial number. Symbology and printing are
+deferred until the scanner/printer standard is approved.
 
 ## WorkflowTemplate
 
@@ -899,6 +928,12 @@ Constraints:
 ```text
 UNIQUE(organizationId, userId, key)
 ```
+
+Product creation uses `operation = products.create`, stores a deterministic
+hash of the accepted request fields, and stores the created Product ID in
+`resultReference`. The key is scoped to the trusted tenant and authenticated
+User. An exact replay returns the original safe DTO; a changed request with
+the same key is rejected.
 
 ## 6. Current state vs history
 

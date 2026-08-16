@@ -20,6 +20,12 @@ Requirements:
 
 Exact symbology remains replaceable until real printer and phone-camera testing is complete.
 
+Phase 5 establishes the Product barcode identity only. New Products receive a
+globally unique `ff_` value generated from cryptographically secure random
+bytes; the value is not a Product ID or serial number. Scanning, barcode
+rendering, printing, and reprinting remain later operations and are not
+implemented by the Product creation flow.
+
 ## 3. First scan
 
 For a Product in `CREATED`:

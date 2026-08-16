@@ -119,6 +119,7 @@ src/
   modules/
     auth/                 password, credential verification, login/logout
     authorization/        User, Membership, Permission, and tenant helpers
+    products/             Product creation validation, serials, barcodes, and history
   app/
     login/                minimal localized login page
     app/                  protected verification route
@@ -126,6 +127,23 @@ proxy.ts                  optimistic authentication redirect only
 scripts/
   auth:*                  explicit development password/bootstrap commands
 ```
+
+Phase 5 adds the first Product application operation:
+
+```text
+src/modules/products/
+  actions.ts              server action boundary for the Product form
+  product.service.ts      authorized Product creation transaction
+  serial-number.ts        tenant/year atomic serial allocation
+  barcode.ts              non-sequential barcode identity generation
+  product-types.ts        safe input and response DTO types
+```
+
+`/app/products/new` loads current-tenant reference options and submits only
+allowed fields. The Product service resolves the trusted tenant through
+`requirePermission("products.create")`, validates references, then atomically
+creates the Product, Barcode, `PRODUCT_CREATED` transition, AuditLog, and
+idempotency result before returning a safe DTO.
 
 `proxy.ts` is an optimistic route filter. It must not be the only
 authorization layer. Protected server actions, route handlers, and future

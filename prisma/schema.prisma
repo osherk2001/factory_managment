@@ -78,6 +78,7 @@ model Organization {
   productionOrders        ProductionOrder[]
   productTypes            ProductType[]
   products                Product[]
+  productSerialCounters   ProductSerialCounter[]
   barcodes                Barcode[]
   workflowTemplates       WorkflowTemplate[]
   workflowSnapshots       WorkflowSnapshot[]
@@ -389,6 +390,19 @@ model Product {
   @@index([organizationId, currentLocationId, status])
   @@index([organizationId, targetAt])
   @@index([organizationId, productionOrderId])
+}
+
+// Allocates tenant/year serial numbers atomically. Product serials remain
+// human-readable while the counter prevents concurrent count/latest races.
+model ProductSerialCounter {
+  organizationId String   @db.Uuid
+  year           Int
+  lastValue      Int      @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, year])
+  @@index([organizationId])
 }
 
 model Barcode {

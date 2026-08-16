@@ -1,6 +1,6 @@
 # FactoryFlow
 
-FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation, the Phase 2 core database model, the Phase 3 development fixtures, and the Phase 4 authentication and authorization foundation.
+FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation, the Phase 2 core database model, the Phase 3 development fixtures, the Phase 4 authentication and authorization foundation, and the Phase 5 Product creation flow.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
    npm run db:check
    ```
 
-   The migrations create the core tenant, identity, production, workflow, tracking, history, audit, and idempotency tables. They also create the PostgreSQL partial unique index that allows only one active ProductAssignment per Product and the database integrity hardening constraints.
+   The migrations create the core tenant, identity, production, workflow, tracking, history, audit, and idempotency tables. They also create the PostgreSQL partial unique index that allows only one active ProductAssignment per Product, the database integrity hardening constraints, and the tenant/year Product serial counter.
 
 5. Seed local development fixtures:
 
@@ -81,6 +81,11 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
    ```
 
    Open <http://localhost:3000>. The health endpoint is <http://localhost:3000/api/health>.
+
+   Users with `products.create` can create a Product at
+   <http://localhost:3000/app/products/new>. Product creation assigns the
+   next UTC-year serial, creates a non-guessable `ff_` barcode identity, and
+   records the creation transition and audit event atomically.
 
 ## Verification commands
 
@@ -122,6 +127,11 @@ Auth.js uses a Credentials provider with globally unique usernames as the MVP lo
 
 Login rate limiting is not implemented yet because the MVP does not include Redis or another shared rate-limit service. It remains a production-readiness requirement.
 
-## Deliberate Phase 4 boundaries
+## Deliberate Phase 5 boundaries
 
-This phase does not include Product lifecycle services, barcode scanning, worker or manager dashboards, the workflow business engine, reports, or production execution. The seed still establishes users without passwords; local password setup and System Admin bootstrap are explicit commands. `SYSTEM_ADMIN` remains a platform-level concept and is not seeded as a tenant access role.
+This phase includes Product creation only. It does not include barcode scanning
+or printing, later Product lifecycle operations, worker or manager dashboards,
+the workflow business engine, reports, or production execution. The seed still
+establishes users without passwords; local password setup and System Admin
+bootstrap are explicit commands. `SYSTEM_ADMIN` remains a platform-level
+concept and is not seeded as a tenant access role.
