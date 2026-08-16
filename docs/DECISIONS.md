@@ -238,7 +238,12 @@ Status: Approved
 
 Decision:
 
-A worker does not finish work by scanning the Product barcode again.
+A worker finishes work from their personal work area. Scanning alone never
+automatically finishes work.
+
+If the same worker scans an `IN_PROGRESS` Product they currently hold, the
+scan may open an explicit finish-work confirmation. Only confirming that
+action executes the normal finish-work operation.
 
 The worker must open the Product from their personal work area and press `Finish work`.
 
@@ -246,7 +251,8 @@ The finish action is a server-side business operation that closes the active res
 
 Consequence:
 
-A repeated scan by the same worker must not automatically be interpreted as work completion.
+A repeated scan by the same worker must not finish work without explicit
+confirmation.
 
 ---
 
@@ -473,7 +479,9 @@ Status: Approved
 
 Decision:
 
-If a worker scans a Product that is already `IN_PROGRESS` and currently assigned to that same worker, the system shows a confirmation popup asking whether to finish the current work.
+Scanning alone never automatically finishes work.
+
+If a worker scans a Product that is already `IN_PROGRESS` and currently assigned to that same worker, the system may show a confirmation popup asking whether to finish the current work.
 
 Available actions:
 
@@ -482,7 +490,7 @@ Available actions:
 
 `No` makes no changes.
 
-`Yes` executes the normal finish-work operation:
+Only choosing `Yes` executes the normal finish-work operation:
 
 - close the active ProductAssignment
 - record completion time
@@ -665,14 +673,9 @@ Authorization responsibilities and factory production functions are different co
 
 The following still require product decisions before implementation:
 
-- `READY_FOR_HANDOFF` rules
-- completion rules
-- rework behavior
-- backward transitions
 - undo behavior
 - manual status-change permissions
 - order lifecycle
 - workflow-stage model
 - exact location rules
 - barcode format and printer standard
-- cancellation and deletion lifecycle

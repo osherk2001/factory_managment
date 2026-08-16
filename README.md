@@ -1,6 +1,6 @@
 # FactoryFlow
 
-FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation and the Phase 2 core database model.
+FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation, the Phase 2 core database model, and the Phase 3 development fixtures.
 
 ## Prerequisites
 
@@ -45,7 +45,17 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
 
    Migration name: `20260815220009_init_core_database`.
 
-5. Start the Next.js development server:
+5. Seed local development fixtures:
+
+   To load the deterministic development organization and reference data, run:
+
+   ```powershell
+   npm run db:seed
+   ```
+
+   The seed command requires `SEED_ENV=development`, refuses to run when `NODE_ENV=production`, is safe to run repeatedly, and never creates passwords or products. It creates only configuration and development user records for the next implementation phase.
+
+6. Start the Next.js development server:
 
    ```powershell
    npm run dev
@@ -60,6 +70,7 @@ npm run format
 npm run lint
 npm run typecheck
 npm test
+npm run db:seed
 npx playwright install chromium
 npm run test:e2e
 docker compose config
@@ -84,6 +95,6 @@ prisma/                Prisma schema and migration history
 tests/                 Vitest unit/integration tests and Playwright smoke tests
 ```
 
-## Deliberate Phase 2 boundaries
+## Deliberate Phase 3 boundaries
 
-This phase does not include authentication flows, permission middleware, Product lifecycle services, barcode scanning, worker or manager dashboards, the workflow business engine, reporting, or seed users. The database foundation preserves the documented domain state and history without implementing application behavior.
+This phase does not include Auth.js, login, sessions, password hashing, middleware, permission guards, Product lifecycle services, barcode scanning, worker or manager dashboards, the workflow business engine, reports, or production execution. The seed establishes development users, tenant access roles, permissions, production roles, employees, departments, and locations only. `SYSTEM_ADMIN` remains a platform-level concept and is not seeded as a tenant access role.
