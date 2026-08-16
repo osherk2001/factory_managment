@@ -1,6 +1,6 @@
 # FactoryFlow
 
-FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation, the Phase 2 core database model, and the Phase 3 development fixtures.
+FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation, the Phase 2 core database model, the Phase 3 development fixtures, and the Phase 4 authentication and authorization foundation.
 
 ## Prerequisites
 
@@ -24,6 +24,8 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
 
    Keep `POSTGRES_PASSWORD` and the password in `DATABASE_URL` aligned. The example uses a placeholder value; set a local development password before starting PostgreSQL.
 
+   Set `AUTH_SECRET` to at least 32 random characters. Auth.js uses it to protect the JWT session cookie. Do not commit the real value.
+
    `POSTGRES_PORT` is the host port mapped to PostgreSQL. The default is `5432`; choose another free host port if that port is already in use and update the port in `DATABASE_URL` to match.
 
 3. Start PostgreSQL:
@@ -33,7 +35,7 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
    docker compose ps
    ```
 
-4. Apply the Phase 2 migration, generate the Prisma client, and verify the connection:
+4. Apply the migrations, generate the Prisma client, and verify the connection:
 
    ```powershell
    npx prisma migrate deploy
@@ -41,9 +43,7 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
    npm run db:check
    ```
 
-   The migration creates the core tenant, identity, production, workflow, tracking, history, audit, and idempotency tables. It also creates the PostgreSQL partial unique index that allows only one active ProductAssignment per Product.
-
-   Migration name: `20260815220009_init_core_database`.
+   The migrations create the core tenant, identity, production, workflow, tracking, history, audit, and idempotency tables. They also create the PostgreSQL partial unique index that allows only one active ProductAssignment per Product and the database integrity hardening constraints.
 
 5. Seed local development fixtures:
 
@@ -53,9 +53,29 @@ FactoryFlow is a multi-tenant manufacturing execution system. This repository cu
    npm run db:seed
    ```
 
-   The seed command requires `SEED_ENV=development`, refuses to run when `NODE_ENV=production`, is safe to run repeatedly, and never creates passwords or products. It creates only configuration and development user records for the next implementation phase.
+   The seed command requires `SEED_ENV=development`, refuses to run when `NODE_ENV=production`, is safe to run repeatedly, and never creates passwords or products. It creates only configuration and development user records.
 
-6. Start the Next.js development server:
+6. Set a password for a seeded development user when manual login testing is needed:
+
+   ```powershell
+   $env:SEED_ENV = "development"
+   $env:AUTH_DEV_USERNAME = "factoryflow-admin"
+   npm run auth:set-dev-password
+   ```
+
+   If `AUTH_DEV_PASSWORD` is not provided, the command prompts without echoing the password. The command only accepts users belonging to the development organization and never prints the password.
+
+7. Bootstrap a platform System Admin explicitly when needed:
+
+   ```powershell
+   $env:SEED_ENV = "development"
+   $env:AUTH_BOOTSTRAP_USERNAME = "platform-admin"
+   npm run auth:bootstrap-system-admin
+   ```
+
+   The password is read from `AUTH_BOOTSTRAP_PASSWORD` or a hidden prompt. This command does not create a tenant `SYSTEM_ADMIN` role or an Organization Membership.
+
+8. Start the Next.js development server:
 
    ```powershell
    npm run dev
@@ -95,6 +115,14 @@ prisma/                Prisma schema and migration history
 tests/                 Vitest unit/integration tests and Playwright smoke tests
 ```
 
-## Deliberate Phase 3 boundaries
+## Authentication and authorization foundation
 
-This phase does not include Auth.js, login, sessions, password hashing, middleware, permission guards, Product lifecycle services, barcode scanning, worker or manager dashboards, the workflow business engine, reports, or production execution. The seed establishes development users, tenant access roles, permissions, production roles, employees, departments, and locations only. `SYSTEM_ADMIN` remains a platform-level concept and is not seeded as a tenant access role.
+Auth.js uses a Credentials provider with globally unique usernames as the MVP login identifier. Sessions use encrypted JWT cookies with a 30-day maximum age. Session claims are minimal and are never treated as authoritative for active-user, Membership, or Permission checks; secure server helpers re-read current state from PostgreSQL.
+
+`/login` is the localized Hebrew-default login page. `/app` is the minimal protected verification route. `proxy.ts` performs only optimistic authentication redirects; sensitive operations must call `requireAuthenticatedUser()`, `requireTenantContext()`, `requireSystemAdmin()`, or a permission helper on the server.
+
+Login rate limiting is not implemented yet because the MVP does not include Redis or another shared rate-limit service. It remains a production-readiness requirement.
+
+## Deliberate Phase 4 boundaries
+
+This phase does not include Product lifecycle services, barcode scanning, worker or manager dashboards, the workflow business engine, reports, or production execution. The seed still establishes users without passwords; local password setup and System Admin bootstrap are explicit commands. `SYSTEM_ADMIN` remains a platform-level concept and is not seeded as a tenant access role.

@@ -754,6 +754,58 @@ the business record.
 
 ---
 
+### D-037: Username is the MVP login identifier
+
+Status: Approved
+
+Decision:
+
+The MVP authenticates with the globally unique `User.username` and password.
+Email remains available for future features but is not used as the primary
+login identifier.
+
+### D-038: Auth.js uses bounded JWT sessions for the MVP
+
+Status: Approved
+
+Decision:
+
+FactoryFlow uses Auth.js Credentials authentication with a JWT-backed session
+cookie and a 30-day maximum age. Session claims contain only safe identity
+fields. Sensitive authorization checks revalidate the current User,
+Membership, and Permission state from PostgreSQL.
+
+Reason:
+
+The current Credentials MVP does not require Auth.js adapter tables, and a
+bounded JWT session is the simplest supported session strategy for the
+foundation. Database state remains authoritative when accounts,
+Memberships, or Permissions change.
+
+### D-039: Tenant context resolves one active Membership automatically
+
+Status: Approved
+
+Decision:
+
+An authenticated active User with exactly one active Membership receives that
+Membership as the tenant context. Multiple active Memberships are never
+silently ordered or guessed; without a validated selection the server returns
+`ORGANIZATION_SELECTION_REQUIRED`.
+
+System Admin capability remains separate from tenant Membership and does not
+grant tenant access by itself.
+
+### D-040: Login rate limiting remains a production-readiness requirement
+
+Status: Approved
+
+Decision:
+
+Phase 4 does not add Redis or a misleading process-local login limiter. A
+shared production-grade login rate limiter must be implemented before
+production deployment.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

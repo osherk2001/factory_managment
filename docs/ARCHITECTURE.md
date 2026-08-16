@@ -110,6 +110,28 @@ docs/
 tests/
 ```
 
+Phase 4 adds the following server-side authentication boundaries:
+
+```text
+src/
+  auth.ts                 Auth.js Credentials/session configuration
+  auth.config.ts          proxy-safe Auth.js configuration
+  modules/
+    auth/                 password, credential verification, login/logout
+    authorization/        User, Membership, Permission, and tenant helpers
+  app/
+    login/                minimal localized login page
+    app/                  protected verification route
+proxy.ts                  optimistic authentication redirect only
+scripts/
+  auth:*                  explicit development password/bootstrap commands
+```
+
+`proxy.ts` is an optimistic route filter. It must not be the only
+authorization layer. Protected server actions, route handlers, and future
+application services must resolve current database-backed authorization
+context through the authorization module.
+
 Exact folders may evolve, but domain boundaries should remain clear.
 
 ## 6. Request flow

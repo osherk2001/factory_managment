@@ -100,6 +100,18 @@ verify resource belongs to organization
 execute operation
 ```
 
+The Phase 4 server authorization layer exposes reusable checks for the
+authenticated User, platform System Admin capability, active tenant
+Membership, and Permission codes. These checks re-read current User,
+Membership, and role/Permission state from PostgreSQL. Session claims are not
+authoritative for sensitive operations.
+
+For the MVP, authentication uses the globally unique `User.username` with a
+password. A User with one active Membership is resolved automatically. A User
+with multiple active Memberships receives
+`ORGANIZATION_SELECTION_REQUIRED`; the server must validate any future
+selection against the User's active Memberships.
+
 ## 4. Never trust the client
 
 Do not authorize based on:
@@ -254,6 +266,11 @@ specific usernames become necessary.
 
 Tenant actions must also retain the actor's Organization Membership context.
 The User identity alone is not sufficient to prove tenant authority.
+
+System Admin capability remains independent from Membership. A System Admin
+does not automatically gain access to tenant data. Platform operations use a
+System Admin check; tenant operations require an active Membership and the
+required Permission.
 
 ## 12. Default-deny rule
 

@@ -38,6 +38,12 @@ Requirements:
 
 Never store plaintext passwords.
 
+Phase 4 uses Auth.js Credentials authentication with `User.username` as the
+login identifier. Passwords are hashed with Argon2id. The Auth.js session is a
+JWT-backed, HttpOnly framework-managed cookie with a 30-day maximum age. The
+session contains only safe identity data; current User, Membership, and
+Permission state is revalidated from the database before secure operations.
+
 ## 4. Authorization
 
 All protected mutations and reads require server-side authorization.
@@ -138,6 +144,11 @@ Priority endpoints:
 - scan mutation
 - high-volume search if necessary
 
+Login rate limiting is not implemented in Phase 4 because the approved MVP
+does not include Redis or another shared rate-limit service. It remains a
+production-readiness requirement and must not be treated as solved by an
+in-memory process-local limiter.
+
 ## 12. CSRF
 
 Use appropriate CSRF protection based on the final mutation/session model.
@@ -159,6 +170,9 @@ Never commit:
 - API tokens
 
 Provide `.env.example` with names only, never real values.
+
+Auth.js requires `AUTH_SECRET`. The environment validator requires it in
+production and requires any supplied value to be at least 32 characters.
 
 ## 14. Logging
 
