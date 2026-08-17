@@ -11,6 +11,10 @@ vi.mock("../../src/auth", () => ({ auth: vi.fn() }));
 import { auth } from "../../src/auth";
 import { prisma } from "../../src/lib/db/client";
 import { scanProduct } from "../../src/modules/scanning/server";
+import {
+  isWorkerScanError,
+  SCAN_ERROR_CODES,
+} from "../../src/modules/scanning/scan-errors";
 import * as productionContextLock from "../../src/modules/worker-context/production-context-lock";
 import {
   cancelProduct,
@@ -741,6 +745,18 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
     expect(
       results.filter((result) => result.status === "rejected"),
     ).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.status).toBe("rejected");
+    if (!rejected || rejected.status !== "rejected") {
+      throw new Error(
+        "The Finish versus Cancel race did not reject an operation.",
+      );
+    }
+    expect(
+      isProductLifecycleError(rejected.reason) &&
+        rejected.reason.code ===
+          PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_STATE_CHANGED,
+    ).toBe(true);
     const finalProduct = await prisma.product.findUniqueOrThrow({
       where: { id: product.id },
       select: {
@@ -764,11 +780,30 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
         where: { productId: product.id, endedAt: null },
       }),
     ).resolves.toBe(0);
+
+    const transitions = await prisma.productTransition.findMany({
+      where: { productId: product.id },
+      select: { eventType: true },
+    });
+    expect(transitions).toHaveLength(1);
+    const assignment = await prisma.productAssignment.findFirstOrThrow({
+      where: { productId: product.id },
+      select: { endReason: true },
+    });
+    if (finalProduct.status === ProductStatus.READY_FOR_HANDOFF) {
+      expect(transitions).toEqual([{ eventType: "WORK_FINISHED" }]);
+      expect(assignment.endReason).toBe("FINISHED");
+    } else {
+      expect(finalProduct.status).toBe(ProductStatus.CANCELLED);
+      expect(transitions).toEqual([{ eventType: "PRODUCT_CANCELLED" }]);
+      expect(assignment.endReason).toBe("CANCELLED");
+    }
   });
 
-  it("serializes receive versus Complete without a contradictory state", async () => {
+  it("serializes receive versus Complete from READY_FOR_HANDOFF", async () => {
     const product = await createProduct("receive-complete-race", {
-      status: ProductStatus.CREATED,
+      status: ProductStatus.READY_FOR_HANDOFF,
+      currentLocationId: locationA.id,
       version: 0,
     });
     await setWorkerARole(roleA.id);
@@ -788,6 +823,20 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
     expect(
       results.filter((result) => result.status === "rejected"),
     ).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected?.status).toBe("rejected");
+    if (!rejected || rejected.status !== "rejected") {
+      throw new Error(
+        "The receive versus Complete race did not reject an operation.",
+      );
+    }
+    expect(
+      (isWorkerScanError(rejected.reason) &&
+        rejected.reason.code === SCAN_ERROR_CODES.SCAN_CONFLICT) ||
+        (isProductLifecycleError(rejected.reason) &&
+          rejected.reason.code ===
+            PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_STATE_CHANGED),
+    ).toBe(true);
     const finalProduct = await prisma.product.findUniqueOrThrow({
       where: { id: product.id },
       select: {
@@ -795,19 +844,66 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
         version: true,
         currentWorkerId: true,
         currentRoleId: true,
+        currentLocationId: true,
+        completedAt: true,
       },
     });
-    expect(finalProduct.status).toBe(ProductStatus.IN_PROGRESS);
-    expect(finalProduct).toMatchObject({
-      version: 1,
-      currentWorkerId: workerA.employee.id,
-      currentRoleId: roleA.id,
+    expect(finalProduct.version).toBe(1);
+
+    const transitions = await prisma.productTransition.findMany({
+      where: { productId: product.id },
+      select: { eventType: true },
     });
-    await expect(
-      prisma.productAssignment.count({
-        where: { productId: product.id, endedAt: null },
-      }),
-    ).resolves.toBe(1);
+    expect(transitions).toHaveLength(1);
+
+    if (finalProduct.status === ProductStatus.IN_PROGRESS) {
+      expect(finalProduct).toMatchObject({
+        currentWorkerId: workerA.employee.id,
+        currentRoleId: roleA.id,
+        currentLocationId: locationA.id,
+        completedAt: null,
+      });
+      expect(transitions).toEqual([{ eventType: "PRODUCT_RECEIVED" }]);
+      await expect(
+        prisma.productAssignment.count({
+          where: { productId: product.id, endedAt: null },
+        }),
+      ).resolves.toBe(1);
+      await expect(
+        prisma.productTransition.count({
+          where: { productId: product.id, eventType: "PRODUCT_COMPLETED" },
+        }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.auditLog.count({
+          where: { targetId: product.id, action: "product.completed" },
+        }),
+      ).resolves.toBe(0);
+    } else {
+      expect(finalProduct.status).toBe(ProductStatus.COMPLETED);
+      expect(finalProduct).toMatchObject({
+        currentWorkerId: null,
+        currentRoleId: null,
+        currentLocationId: locationA.id,
+        completedAt: expect.any(Date),
+      });
+      expect(transitions).toEqual([{ eventType: "PRODUCT_COMPLETED" }]);
+      await expect(
+        prisma.productAssignment.count({
+          where: { productId: product.id, endedAt: null },
+        }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.productTransition.count({
+          where: { productId: product.id, eventType: "PRODUCT_RECEIVED" },
+        }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.auditLog.count({
+          where: { targetId: product.id, action: "product.completed" },
+        }),
+      ).resolves.toBe(1);
+    }
   });
 
   it("allows only one concurrent completion and one completion audit", async () => {

@@ -901,18 +901,6 @@ export async function cancelProduct(
     }
 
     const occurredAt = new Date();
-    if (activeAssignment) {
-      const ended = await database.productAssignment.updateMany({
-        where: { id: activeAssignment.id, endedAt: null },
-        data: { endedAt: occurredAt, endReason: "CANCELLED" },
-      });
-      if (ended.count !== 1) {
-        throw new ProductLifecycleError(
-          PRODUCT_LIFECYCLE_ERROR_CODES.ACTIVE_ASSIGNMENT_CONFLICT,
-        );
-      }
-    }
-
     const updated = await database.product.updateMany({
       where: {
         id: product.id,
@@ -934,6 +922,18 @@ export async function cancelProduct(
       throw new ProductLifecycleError(
         PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_STATE_CHANGED,
       );
+    }
+
+    if (activeAssignment) {
+      const ended = await database.productAssignment.updateMany({
+        where: { id: activeAssignment.id, endedAt: null },
+        data: { endedAt: occurredAt, endReason: "CANCELLED" },
+      });
+      if (ended.count !== 1) {
+        throw new ProductLifecycleError(
+          PRODUCT_LIFECYCLE_ERROR_CODES.ACTIVE_ASSIGNMENT_CONFLICT,
+        );
+      }
     }
 
     await database.productTransition.create({
