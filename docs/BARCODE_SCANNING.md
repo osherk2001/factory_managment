@@ -83,14 +83,13 @@ Finish work?
 
 - no changes
 
-In Phase 7, the scan only opens the confirmation state. The `Yes` mutation,
-which closes the assignment and moves the Product to `READY_FOR_HANDOFF`, is
-deferred to the finish/completion phase.
+The scan opens a confirmation state. The `Yes` mutation now calls the same
+Phase 8 finish-work service used by the worker personal work area.
 
-Later-phase `Yes` behavior:
+`Yes` behavior:
 
 - closes active ProductAssignment
-- records completion time
+- records the finish transition without setting `completedAt`
 - clears current worker
 - clears current ProductionRole
 - preserves current location
@@ -126,9 +125,10 @@ Takeover:
 
 ## 7. Scanning a completed Product in same previous department
 
-Phase 7 performs classification only. It reports whether the scanning
-worker's handling Location is in the same department, another department, or
-an unknown context. It does not reopen or mutate a completed Product.
+The scan reports whether the scanning worker's handling Location is in the same
+department, another department, or an unknown context. The classification is
+read-only. An explicit return-to-process action is available only when the
+server confirms `products.reopen` and `scans.perform`.
 
 Show warning:
 
@@ -141,7 +141,7 @@ Cancel:
 
 - no changes
 
-Later-phase return-to-process behavior:
+Phase 8 return-to-process behavior:
 
 - creates new ProductAssignment
 - status becomes `IN_PROGRESS`
@@ -151,23 +151,15 @@ Later-phase return-to-process behavior:
 - ProductTransition appended
 - AuditLog created
 
+The explicit return action is the same authorized mutation for same-department,
+other-department, and unknown-context prompts. A completed scan never
+automatically changes Product responsibility.
+
 ## 8. Scanning a completed Product in another department
 
-Phase 7 performs the same read-only classification for another department.
-The state-changing return-to-process flow remains deferred.
-
-Later-phase behavior: the Product moves to the scanning worker's department
-and returns to active work.
-
-The operation:
-
-- creates new ProductAssignment
-- sets `IN_PROGRESS`
-- updates worker
-- updates ProductionRole
-- updates location
-- appends ProductTransition
-- creates AuditLog
+The other-department scan also performs read-only classification. The Product
+moves only after the worker explicitly confirms return-to-process and the
+server validates the lifecycle permissions and current production context.
 
 ## 9. Cancelled and trashed Products
 

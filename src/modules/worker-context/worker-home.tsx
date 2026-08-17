@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
 import { defaultLocale, getMessages } from "@/lib/i18n";
+import { finishProductAction } from "@/modules/products/lifecycle-actions";
+import {
+  initialProductLifecycleActionState,
+  type ProductLifecycleActionState,
+} from "@/modules/products/lifecycle-action-types";
 
 import { selectActiveProductionRoleAction } from "./actions";
 import {
@@ -18,6 +25,86 @@ function formatTargetAt(targetAt: string | null): string {
   return targetAt
     ? new Date(targetAt).toLocaleString(defaultLocale)
     : messages.worker.notSet;
+}
+
+function finishProductErrorMessage(
+  errorCode: ProductLifecycleActionState["errorCode"],
+): string | null {
+  switch (errorCode) {
+    case "PRODUCT_STATE_CHANGED":
+      return messages.worker.productStateChanged;
+    case "FORBIDDEN":
+    case "UNAUTHORIZED":
+      return messages.worker.finishUnauthorized;
+    case "PRODUCT_NOT_FINISHABLE":
+    case "ACTIVE_ASSIGNMENT_REQUIRED":
+    case "ACTIVE_ASSIGNMENT_CONFLICT":
+    case "INVALID_LIFECYCLE_INPUT":
+    case "IDEMPOTENCY_CONFLICT":
+    case "LIFECYCLE_FAILED":
+      return messages.worker.finishFailed;
+    default:
+      return null;
+  }
+}
+
+function FinishProductForm({ product }: { product: WorkerProductDto }) {
+  const router = useRouter();
+  const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [state, formAction, isSubmitting] = useActionState(
+    finishProductAction,
+    initialProductLifecycleActionState,
+  );
+  const errorMessage = finishProductErrorMessage(state.errorCode);
+
+  useEffect(() => {
+    if (state.result) {
+      router.refresh();
+    }
+  }, [router, state.result]);
+
+  function setFreshKey(event: FormEvent<HTMLFormElement>) {
+    const input = event.currentTarget.elements.namedItem("idempotencyKey");
+    if (input instanceof HTMLInputElement) {
+      input.value = crypto.randomUUID();
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {errorMessage ? (
+        <p className="text-destructive text-sm" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      {state.result ? (
+        <p aria-live="polite" className="text-sm" data-testid="work-finished">
+          {messages.worker.workFinished}
+        </p>
+      ) : (
+        <form action={formAction} onSubmit={setFreshKey}>
+          <input name="operation" type="hidden" value="products.finish" />
+          <input name="productId" type="hidden" value={product.id} />
+          <input name="expectedVersion" type="hidden" value={product.version} />
+          <input
+            defaultValue={initialIdempotencyKey}
+            name="idempotencyKey"
+            type="hidden"
+          />
+          <button
+            className="min-h-14 w-full rounded-xl bg-primary px-5 py-3 text-base font-semibold text-primary-foreground"
+            data-testid="finish-product"
+            disabled={isSubmitting}
+            type="submit"
+          >
+            {isSubmitting
+              ? messages.worker.finishSubmitting
+              : messages.worker.finishWork}
+          </button>
+        </form>
+      )}
+    </div>
+  );
 }
 
 function roleSelectionError(
@@ -97,6 +184,8 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
           <dd>{product.currentLocation?.name ?? messages.worker.notSet}</dd>
         </div>
       </dl>
+
+      <FinishProductForm product={product} />
     </article>
   );
 }

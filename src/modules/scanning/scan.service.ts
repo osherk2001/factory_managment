@@ -2,7 +2,11 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { Prisma, ProductStatus } from "@prisma/client";
+import {
+  Prisma,
+  ProductStatus,
+  ProductTransitionEventType,
+} from "@prisma/client";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
@@ -44,10 +48,24 @@ const scanProductSelect = Prisma.validator<Prisma.ProductSelect>()({
   currentRoleId: true,
   currentLocationId: true,
   currentStageId: true,
+  completedAt: true,
   currentWorker: { select: { id: true, displayName: true } },
   currentRole: { select: { id: true, code: true, name: true } },
   currentLocation: {
     select: { id: true, code: true, name: true, departmentId: true },
+  },
+  transitions: {
+    where: { eventType: ProductTransitionEventType.PRODUCT_COMPLETED },
+    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+    take: 1,
+    select: {
+      actorUser: { select: { username: true } },
+      actorMembership: {
+        select: {
+          employeeProfile: { select: { displayName: true } },
+        },
+      },
+    },
   },
 });
 
@@ -99,6 +117,16 @@ const storedScanResultSchema = z
         departmentId: z.string().uuid().nullable(),
       })
       .nullable(),
+    completedAt: z.iso
+      .datetime({ offset: true })
+      .nullable()
+      .optional()
+      .transform((value) => value ?? null),
+    completedBy: z
+      .object({ displayName: z.string() })
+      .nullable()
+      .optional()
+      .transform((value) => value ?? null),
   })
   .strict();
 
@@ -233,6 +261,20 @@ function toLocationDto(
     : null;
 }
 
+function toCompletedBy(
+  product: ScannedProduct,
+): { displayName: string } | null {
+  const completion = product.transitions[0];
+  if (!completion) {
+    return null;
+  }
+
+  const displayName =
+    completion.actorMembership.employeeProfile?.displayName ??
+    completion.actorUser.username;
+  return displayName ? { displayName } : null;
+}
+
 function classifyCompleted(
   product: ScannedProduct,
   context: ActiveProductionHandlingContext,
@@ -269,6 +311,8 @@ function toScanResult(
     currentWorker: toWorkerDto(product.currentWorker),
     currentRole: toRoleDto(product.currentRole),
     currentLocation: toLocationDto(product.currentLocation),
+    completedAt: product.completedAt?.toISOString() ?? null,
+    completedBy: toCompletedBy(product),
   };
 }
 

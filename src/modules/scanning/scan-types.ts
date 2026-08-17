@@ -33,10 +33,15 @@ export type ScanLocationDto = {
   departmentId: string | null;
 };
 
+export type ScanCompletedByDto = {
+  displayName: string;
+};
+
 export type ActiveProductionHandlingContextDto = {
   employee: ScanEmployeeDto;
   productionRole: ScanProductionRoleDto;
   handlingLocation: ScanLocationDto;
+  canReturnToProcess: boolean;
 };
 
 export type WorkerScanResult = {
@@ -49,6 +54,8 @@ export type WorkerScanResult = {
   currentWorker: ScanEmployeeDto | null;
   currentRole: ScanProductionRoleDto | null;
   currentLocation: ScanLocationDto | null;
+  completedAt: string | null;
+  completedBy: ScanCompletedByDto | null;
 };
 
 export type WorkerScanRequest = {

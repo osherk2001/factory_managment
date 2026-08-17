@@ -25,6 +25,8 @@ let createdProductId: string;
 let createdBarcode: string;
 let ownedProductId: string;
 let ownedBarcode: string;
+let finishProductId: string;
+let finishBarcode: string;
 let locationAId: string;
 let locationBId: string;
 
@@ -255,6 +257,14 @@ test.describe.serial("Phase 7 worker scanning", () => {
     );
     ownedProductId = owned.id;
     ownedBarcode = owned.barcode;
+    const finish = await createProduct(
+      `E2E-SCAN-FINISH-${suffix}`,
+      "IN_PROGRESS",
+      workerAEmployeeId,
+      locationAId,
+    );
+    finishProductId = finish.id;
+    finishBarcode = finish.barcode;
   });
 
   test.afterAll(async () => {
@@ -331,6 +341,40 @@ test.describe.serial("Phase 7 worker scanning", () => {
     await page.getByTestId("worker-scan-submit").click();
     await expect(page.getByTestId("scan-result")).toBeVisible();
     await expect(page.getByTestId("takeover-confirm")).toHaveCount(0);
+  });
+
+  test("finishes same-worker work through explicit scan confirmation", async ({
+    page,
+  }) => {
+    await login(page, workerAUsername);
+    await page.goto("/app/worker/scan");
+    await page.getByTestId("worker-scan-barcode").fill(finishBarcode);
+    await page.getByTestId("worker-scan-submit").click();
+    await expect(page.getByTestId("finish-confirm")).toBeVisible();
+    await expect(page.getByTestId("takeover-confirm")).toHaveCount(0);
+    await page.getByTestId("finish-confirm").click();
+    await expect(page.getByTestId("lifecycle-result")).toContainText(
+      `E2E-SCAN-FINISH-${suffix}`,
+    );
+    await expect(
+      prisma.product.findUniqueOrThrow({
+        where: { id: finishProductId },
+        select: { status: true, currentWorkerId: true, version: true },
+      }),
+    ).resolves.toEqual({
+      status: "READY_FOR_HANDOFF",
+      currentWorkerId: null,
+      version: 4,
+    });
+    await expect(
+      prisma.productAssignment.findFirstOrThrow({
+        where: { productId: finishProductId },
+        select: { endReason: true, endedAt: true },
+      }),
+    ).resolves.toMatchObject({
+      endReason: "FINISHED",
+      endedAt: expect.any(Date),
+    });
   });
 
   test("warns and then explicitly takes over another worker's Product", async ({

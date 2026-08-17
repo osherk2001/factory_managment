@@ -27,6 +27,7 @@ let multiRoleTwoId: string;
 let accessRoleId: string;
 let productsReadPermissionId: string;
 let scansPerformPermissionId: string;
+let singleProductId: string;
 
 async function login(page: Page, username: string) {
   await page.goto("/login");
@@ -184,23 +185,33 @@ test.describe.serial("Phase 6 worker production context", () => {
       ],
     });
 
-    await prisma.product.createMany({
-      data: [
-        {
-          organizationId,
-          serialNumber: `E2E-WORKER-MINE-${suffix}`,
-          status: "IN_PROGRESS",
-          currentWorkerId: singleEmployeeId,
-          currentRoleId: singleRoleId,
-        },
-        {
-          organizationId,
-          serialNumber: `E2E-WORKER-OTHER-${suffix}`,
-          status: "IN_PROGRESS",
-          currentWorkerId: multiEmployeeId,
-          currentRoleId: multiRoleOneId,
-        },
-      ],
+    const singleProduct = await prisma.product.create({
+      data: {
+        organizationId,
+        serialNumber: `E2E-WORKER-MINE-${suffix}`,
+        status: "IN_PROGRESS",
+        currentWorkerId: singleEmployeeId,
+        currentRoleId: singleRoleId,
+      },
+      select: { id: true },
+    });
+    singleProductId = singleProduct.id;
+    await prisma.productAssignment.create({
+      data: {
+        organizationId,
+        productId: singleProductId,
+        employeeId: singleEmployeeId,
+        productionRoleId: singleRoleId,
+      },
+    });
+    await prisma.product.create({
+      data: {
+        organizationId,
+        serialNumber: `E2E-WORKER-OTHER-${suffix}`,
+        status: "IN_PROGRESS",
+        currentWorkerId: multiEmployeeId,
+        currentRoleId: multiRoleOneId,
+      },
     });
   });
 
@@ -208,6 +219,10 @@ test.describe.serial("Phase 6 worker production context", () => {
     await prisma.workerProductionContext.deleteMany({
       where: { organizationId },
     });
+    await prisma.productAssignment.deleteMany({ where: { organizationId } });
+    await prisma.idempotencyKey.deleteMany({ where: { organizationId } });
+    await prisma.auditLog.deleteMany({ where: { organizationId } });
+    await prisma.productTransition.deleteMany({ where: { organizationId } });
     await prisma.product.deleteMany({ where: { organizationId } });
     await prisma.employeeProductionRole.deleteMany({
       where: { organizationId },
@@ -300,5 +315,33 @@ test.describe.serial("Phase 6 worker production context", () => {
         select: { activeProductionRoleId: true },
       }),
     ).resolves.toEqual({ activeProductionRoleId: multiRoleTwoId });
+  });
+
+  test("finishes the current worker's Product from the worker home", async ({
+    page,
+  }) => {
+    await login(page, singleUsername);
+    await page.goto("/app/worker");
+    await page.getByTestId("finish-product").click();
+    await expect(page.getByTestId("no-worker-products")).toBeVisible();
+    await expect(
+      prisma.product.findUniqueOrThrow({
+        where: { id: singleProductId },
+        select: { status: true, currentWorkerId: true, version: true },
+      }),
+    ).resolves.toEqual({
+      status: "READY_FOR_HANDOFF",
+      currentWorkerId: null,
+      version: 1,
+    });
+    await expect(
+      prisma.productAssignment.findFirstOrThrow({
+        where: { productId: singleProductId },
+        select: { endReason: true, endedAt: true },
+      }),
+    ).resolves.toMatchObject({
+      endReason: "FINISHED",
+      endedAt: expect.any(Date),
+    });
   });
 });

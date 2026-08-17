@@ -347,6 +347,32 @@ Current confirmed meaning:
 - Current location is recorded.
 - Product history includes the receive action.
 
+### READY_FOR_HANDOFF
+
+- Work in the current responsibility period has been explicitly finished.
+- No worker or ProductionRole is currently responsible for the Product.
+- The last known physical Location remains stored.
+- `completedAt` is reserved for explicit Product completion and is not set by
+  Finish work.
+
+### COMPLETED
+
+- Completion is an explicit authorized operation from `READY_FOR_HANDOFF`.
+- `completedAt` records the completion instant.
+- No current worker, ProductionRole, or active ProductAssignment remains.
+- A completed Product is not silently reopened by a scan.
+
+### CANCELLED and TRASHED
+
+- Cancellation is an explicit authorized operation from `CREATED`,
+  `IN_PROGRESS`, or `READY_FOR_HANDOFF`.
+- `cancelledAt` records entry into `CANCELLED` and is cleared when a cancelled
+  Product is restored or moved to `TRASHED`.
+- Restoration is an explicit authorized operation from `CANCELLED` to
+  `READY_FOR_HANDOFF`; it does not create an assignment.
+- Logical trash is an explicit authorized operation from `CANCELLED` to
+  `TRASHED`. The Product row and its history remain stored.
+
 ## 4. Scan domain rules
 
 A scan is a business mutation, not only a Product lookup.
@@ -429,9 +455,8 @@ Confirmed flow:
 3. Worker presses `Finish work`.
 4. The server validates that the worker is allowed to finish the current assignment.
 5. The current responsibility period is closed.
-6. The completion time is recorded.
-7. Product history is appended.
-8. The Product moves to the next handoff state according to the defined workflow.
+6. Product history is appended.
+7. The Product moves to `READY_FOR_HANDOFF`.
 
 Current expected state transition:
 
@@ -493,23 +518,19 @@ Rules:
 
 Reopening a completed Product is a separate business operation even when it is initiated from a scan warning.
 
+The return-to-process operation requires both `products.reopen` and
+`scans.perform`. It resolves the active EmployeeProfile, ProductionRole, and
+handling Location inside the transaction, after acquiring the EmployeeProfile
+production-mutation lock. It clears `completedAt`, creates the new active
+assignment, and increments the Product version.
 
-### Receiving a completed Product in a different department
 
-If a worker scans a `COMPLETED` Product from a department different from the Product's last pre-completion department, the scan transfers the Product into the new department and starts a new active responsibility period.
+### Scanning a completed Product in a different department
 
-The operation must:
-
-1. validate the worker and tenant
-2. validate `scans.perform`
-3. create a new ProductAssignment
-4. set `status = IN_PROGRESS`
-5. set `currentWorker` to the scanning worker
-6. set `currentRole` to the worker's active role
-7. set `currentLocation` to the scanning worker's department/location
-8. append a ProductTransition
-9. create an audit record
-10. preserve all prior history
+The scan remains a read-only classification and does not automatically
+transfer or reopen the Product. A worker with the explicit reopen capability
+may choose the separate return-to-process operation, which applies the same
+authorization and transaction rules regardless of the department.
 
 
 ### Transfer from one active worker to another
@@ -540,12 +561,22 @@ A successful takeover must:
 
 The operation must be atomic and concurrency-safe.
 
-## 8. Open decisions
+## 8. Lifecycle mutation safety
+
+Every Phase 8 lifecycle mutation validates a tenant-scoped Product and the
+caller-provided expected `Product.version`, then performs a compare-and-set
+update in one database transaction. The operation is idempotent: the same
+tenant/user/idempotency-key and request replays the stored safe result, while a
+changed request with that key is rejected. Concurrent requests cannot create
+two active assignments or duplicate lifecycle history.
+
+The Product status is authoritative. Timestamps are evidence of the relevant
+transition, not an alternative status machine.
+
+## 9. Open decisions
 
 These decisions are intentionally not finalized yet:
 
-- Exact meaning and transition into `READY_FOR_HANDOFF`.
-- Exact completion rules.
 - Exact rework and backward-movement rules.
 - Exact manual status-change permissions.
 - Exact order lifecycle.
@@ -553,7 +584,6 @@ These decisions are intentionally not finalized yet:
 - Exact relationship between role and location.
 - Exact barcode symbology and printer model.
 - Exact undo behavior.
-- Exact cancellation, recycle-bin, and deletion flow.
 
 These decisions must be resolved before implementing the affected domain behavior.
 

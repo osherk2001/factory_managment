@@ -209,6 +209,17 @@ Implement:
 
 Preserve append-only history.
 
+Status: Implemented
+
+Phase 8 implements Finish work, explicit completion, explicit
+return-to-process, cancellation, restoration, and logical trash with
+tenant-scoped authorization, Product version compare-and-set, idempotency,
+safe lifecycle DTOs, append-only transition/audit history, assignment
+integrity, and concurrency tests. The worker UI supports personal Finish work
+and explicit scan confirmations; the management route exposes contextual
+lifecycle controls. No workflow progression, physical deletion, undo, or
+Phase 9 behavior is included.
+
 ## Phase 9 — Workflow engine
 
 Implement:

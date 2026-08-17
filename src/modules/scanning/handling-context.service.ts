@@ -3,7 +3,11 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/client";
-import { requirePermission, type TenantContext } from "@/modules/authorization";
+import {
+  hasPermission,
+  requirePermission,
+  type TenantContext,
+} from "@/modules/authorization";
 import {
   resolveEmployeeContext,
   resolveEmployeeContextForDatabase,
@@ -151,6 +155,7 @@ export async function getWorkerScanPageData(): Promise<ActiveProductionHandlingC
     employee,
     productionRole: context.productionRole,
     handlingLocation: context.handlingLocation,
+    canReturnToProcess: await hasPermission("products.reopen", context.tenant),
   };
 }
 

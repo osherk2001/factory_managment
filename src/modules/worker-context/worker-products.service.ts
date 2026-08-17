@@ -28,6 +28,7 @@ export async function listWorkerProductsForEmployee(
       id: true,
       serialNumber: true,
       status: true,
+      version: true,
       isUrgent: true,
       targetAt: true,
       productionOrder: {
@@ -49,6 +50,7 @@ export async function listWorkerProductsForEmployee(
     id: product.id,
     serialNumber: product.serialNumber,
     status: "IN_PROGRESS",
+    version: product.version,
     isUrgent: product.isUrgent,
     targetAt: product.targetAt?.toISOString() ?? null,
     productionOrder: product.productionOrder,

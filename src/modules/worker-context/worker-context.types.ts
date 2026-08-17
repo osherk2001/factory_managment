@@ -39,6 +39,7 @@ export type WorkerProductDto = {
   id: string;
   serialNumber: string;
   status: "IN_PROGRESS";
+  version: number;
   isUrgent: boolean;
   targetAt: string | null;
   productionOrder: {

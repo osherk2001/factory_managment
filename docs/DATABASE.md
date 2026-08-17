@@ -592,8 +592,9 @@ Important:
 
 `status`, `currentWorkerId`, `currentRoleId`, and `currentLocationId` are intentionally separate.
 
-`version` is the optimistic concurrency token for Product receive and
-takeover scans. A state-changing scan updates the Product with a predicate
+`version` is the optimistic concurrency token for Product receive, takeover,
+Finish, completion, return-to-process, cancellation, restoration, and logical
+trash. Every state-changing operation updates the Product with a predicate
 containing the expected version and rejects a zero-row update as a conflict.
 
 `currentStageId` references `WorkflowSnapshotStage` together with the Product
@@ -979,6 +980,23 @@ An exact replay validates and returns that stored creation snapshot even when
 the current Product has moved to a later lifecycle state; a changed request
 with the same key is rejected.
 
+Phase 8 lifecycle operations use these operation names:
+
+```text
+products.finish
+products.complete
+products.return_to_process
+products.cancel
+products.restore
+products.trash
+```
+
+Each operation stores its immutable safe lifecycle DTO in `resultData` and
+the Product ID in `resultReference`. Replaying the same request returns that
+stored DTO without creating another ProductTransition, AuditLog, or
+ProductAssignment. Reusing the key with a different operation, Product, or
+expected version is an idempotency conflict.
+
 ## 6. Current state vs history
 
 FactoryFlow stores both:
@@ -1122,6 +1140,24 @@ CANCELLED -> TRASHED
 `TRASHED` is still stored.
 
 Permanent deletion is a later retention-policy decision.
+
+Lifecycle timestamp semantics are explicit:
+
+- `COMPLETED` sets `completedAt`; leaving `COMPLETED` clears it.
+- `CANCELLED` sets `cancelledAt`; restoration and logical trash clear it.
+- `TRASHED` sets `trashedAt`.
+- `status` remains authoritative; nullable timestamps do not independently
+  determine the Product state.
+
+Finish work closes the active ProductAssignment with `endReason = FINISHED`.
+Cancellation closes it with `endReason = CANCELLED`. Completion, restoration,
+and logical trash require no active assignment. Return-to-process creates one
+new active assignment after validating the worker's current EmployeeProfile,
+ProductionRole, and handling Location.
+
+No database migration is required for Phase 8: the existing Product status,
+timestamp, version, transition-event, assignment-end-reason, idempotency, and
+one-active-assignment structures already support these operations.
 
 Tables containing historical evidence should not use cascading deletion casually.
 

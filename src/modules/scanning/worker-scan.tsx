@@ -79,8 +79,21 @@ function errorMessage(
       return messages.worker.scanConflict;
     case "SCAN_FAILED":
     case "INVALID_SCAN_INPUT":
+    case "INVALID_LIFECYCLE_INPUT":
     case "IDEMPOTENCY_CONFLICT":
       return messages.worker.scanFailed;
+    case "PRODUCT_STATE_CHANGED":
+      return messages.worker.productStateChanged;
+    case "PRODUCT_NOT_FINISHABLE":
+    case "PRODUCT_NOT_COMPLETABLE":
+    case "PRODUCT_NOT_REOPENABLE":
+    case "PRODUCT_NOT_CANCELLABLE":
+    case "PRODUCT_NOT_RESTORABLE":
+    case "PRODUCT_NOT_TRASHABLE":
+    case "ACTIVE_ASSIGNMENT_REQUIRED":
+    case "ACTIVE_ASSIGNMENT_CONFLICT":
+    case "LIFECYCLE_FAILED":
+      return messages.worker.finishFailed;
     case "PRODUCT_NOT_RECEIVABLE":
     case "TAKEOVER_NOT_ALLOWED":
       return messages.worker.productNotReceivable;
@@ -133,7 +146,47 @@ function ResultDetails({ result }: { result: WorkerScanResult }) {
           </dt>
           <dd>{result.currentLocation?.name ?? messages.worker.notSet}</dd>
         </div>
+        {result.completedBy ? (
+          <div data-testid="completed-by">
+            <dt className="font-medium text-muted-foreground">
+              {messages.worker.completedBy}
+            </dt>
+            <dd>{result.completedBy.displayName}</dd>
+          </div>
+        ) : null}
       </dl>
+    </div>
+  );
+}
+
+function LifecycleResultDetails({
+  result,
+}: {
+  result: NonNullable<WorkerScanActionState["lifecycleResult"]>;
+}) {
+  const status =
+    result.status === "READY_FOR_HANDOFF"
+      ? messages.worker.readyForHandoff
+      : result.status === "IN_PROGRESS"
+        ? messages.worker.inProgress
+        : result.status === "COMPLETED"
+          ? messages.worker.completed
+          : result.status === "CANCELLED"
+            ? messages.worker.cancelled
+            : result.status === "TRASHED"
+              ? messages.worker.trashed
+              : messages.worker.created;
+
+  return (
+    <div className="space-y-4" data-testid="lifecycle-result">
+      <p aria-live="polite" className="text-lg font-semibold">
+        {result.status === "READY_FOR_HANDOFF"
+          ? messages.worker.workFinished
+          : messages.worker.returnedToProcess}
+      </p>
+      <p>
+        {result.serialNumber} · {status}
+      </p>
     </div>
   );
 }
@@ -176,6 +229,116 @@ function TakeoverForm({
             : messages.worker.takeoverAction}
         </button>
       </form>
+    </section>
+  );
+}
+
+function FinishConfirmation({
+  result,
+  formAction,
+  isSubmitting,
+}: {
+  result: WorkerScanResult;
+  formAction: WorkerScanFormAction;
+  isSubmitting: boolean;
+}) {
+  const [cancelled, setCancelled] = useState(false);
+  const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
+
+  if (cancelled) {
+    return (
+      <p className="text-sm" data-testid="finish-cancelled">
+        {messages.worker.finishCancelled}
+      </p>
+    );
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-5">
+      <ResultDetails result={result} />
+      <p className="text-lg font-semibold">{messages.worker.finishQuestion}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <form action={formAction} onSubmit={setFreshIdempotencyKey}>
+          <input name="operation" type="hidden" value="finish" />
+          <input name="productId" type="hidden" value={result.productId} />
+          <input name="expectedVersion" type="hidden" value={result.version} />
+          <input
+            defaultValue={initialIdempotencyKey}
+            name="idempotencyKey"
+            type="hidden"
+          />
+          <button
+            className="min-h-14 w-full rounded-xl bg-primary px-5 py-3 text-base font-semibold text-primary-foreground"
+            data-testid="finish-confirm"
+            disabled={isSubmitting}
+            type="submit"
+          >
+            {messages.worker.finishWork}
+          </button>
+        </form>
+        <button
+          className="min-h-14 rounded-xl border bg-white px-5 py-3 text-base font-semibold"
+          data-testid="finish-cancel"
+          onClick={() => setCancelled(true)}
+          type="button"
+        >
+          {messages.worker.finishNo}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function CompletedReturnConfirmation({
+  result,
+  formAction,
+  isSubmitting,
+}: {
+  result: WorkerScanResult;
+  formAction: WorkerScanFormAction;
+  isSubmitting: boolean;
+}) {
+  const [cancelled, setCancelled] = useState(false);
+  const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
+
+  if (cancelled) {
+    return (
+      <p className="text-sm" data-testid="return-cancelled">
+        {messages.worker.returnCancelled}
+      </p>
+    );
+  }
+
+  return (
+    <section className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-5">
+      <ResultDetails result={result} />
+      <p className="text-lg font-semibold">{messages.worker.returnQuestion}</p>
+      <form action={formAction} onSubmit={setFreshIdempotencyKey}>
+        <input name="operation" type="hidden" value="return_to_process" />
+        <input name="productId" type="hidden" value={result.productId} />
+        <input name="expectedVersion" type="hidden" value={result.version} />
+        <input
+          defaultValue={initialIdempotencyKey}
+          name="idempotencyKey"
+          type="hidden"
+        />
+        <button
+          className="min-h-14 w-full rounded-xl bg-primary px-5 py-3 text-base font-semibold text-primary-foreground"
+          data-testid="return-to-process"
+          disabled={isSubmitting}
+          type="submit"
+        >
+          {messages.worker.returnToProcess}
+        </button>
+      </form>
+      <button
+        className="min-h-14 w-full rounded-xl border bg-white px-5 py-3 text-base font-semibold"
+        data-testid="return-cancel"
+        onClick={() => setCancelled(true)}
+        type="button"
+      >
+        {messages.worker.finishNo}
+      </button>
     </section>
   );
 }
@@ -274,9 +437,29 @@ export function WorkerScanPage({
                 isSubmitting={isSubmitting}
                 result={state.result}
               />
+            ) : state.result.scanOutcome === "FINISH_CONFIRMATION_REQUIRED" ? (
+              <FinishConfirmation
+                formAction={formAction}
+                isSubmitting={isSubmitting}
+                result={state.result}
+              />
+            ) : state.result.status === "COMPLETED" &&
+              data.canReturnToProcess &&
+              (state.result.scanOutcome === "COMPLETED_SAME_DEPARTMENT" ||
+                state.result.scanOutcome === "COMPLETED_OTHER_DEPARTMENT" ||
+                state.result.scanOutcome === "COMPLETED_CONTEXT_UNKNOWN") ? (
+              <CompletedReturnConfirmation
+                formAction={formAction}
+                isSubmitting={isSubmitting}
+                result={state.result}
+              />
             ) : (
               <ResultDetails result={state.result} />
             )
+          ) : null}
+
+          {state.lifecycleResult ? (
+            <LifecycleResultDetails result={state.lifecycleResult} />
           ) : null}
         </section>
       </section>

@@ -167,6 +167,26 @@ timezone or offset. The browser converts its local `datetime-local` value to a
 UTC ISO instant before submission, so the server timezone cannot change the
 meaning of the requested target time.
 
+Phase 8 lifecycle actions use the same tenant-scoped trust boundary. The
+server validates the Product ID and expected version with Zod, never trusts a
+browser-supplied organization or worker, and returns safe DTOs rather than
+Prisma records. Finish validates current ownership and the active assignment's
+stored role. Return-to-process re-resolves worker role and handling Location
+inside the transaction after the EmployeeProfile lock. Completion,
+cancellation, restore, and trash validate their exact allowed source state.
+
+Product `version` compare-and-set prevents stale lifecycle requests from
+silently overwriting newer state. The existing partial unique index protects
+the one-active-assignment invariant. All lifecycle mutations are transactional,
+idempotent, and replay their validated immutable result for an exact retry;
+changed-key reuse is rejected. Expected conflicts do not retry silently.
+
+Lifecycle history is append-only. Finish and cancellation close assignments
+with explicit end reasons; completion and the administrative lifecycle
+actions create the required transition and audit evidence; logical trash does
+not delete the Product or its history. No lifecycle operation logs passwords,
+tokens, hashes, or other credentials.
+
 ## 10. Concurrency and replay
 
 State-changing requests must support:

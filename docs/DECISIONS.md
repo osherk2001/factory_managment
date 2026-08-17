@@ -965,6 +965,88 @@ infrastructure or schema. The transaction must re-read authoritative context
 after waiting for the lock so a role-selection commit cannot be paired with an
 older role or handling Location.
 
+---
+
+### D-049: Phase 8 uses an explicit Product lifecycle transition matrix
+
+Status: Approved
+
+Decision:
+
+Phase 8 confirms only these lifecycle mutations:
+
+```text
+IN_PROGRESS       -> READY_FOR_HANDOFF  Finish work
+READY_FOR_HANDOFF -> COMPLETED          explicit completion
+COMPLETED         -> IN_PROGRESS        explicit return-to-process
+CREATED           -> CANCELLED          cancellation
+IN_PROGRESS       -> CANCELLED          cancellation
+READY_FOR_HANDOFF -> CANCELLED          cancellation
+CANCELLED         -> READY_FOR_HANDOFF  restoration
+CANCELLED         -> TRASHED            logical trash
+```
+
+No new ProductStatus is introduced. Workflow-stage progression, expected next
+stage, issue lifecycle, weights, dashboards, reports, undo, and physical
+deletion remain outside this phase.
+
+---
+
+### D-050: Finish history uses the stored ProductAssignment role
+
+Status: Approved
+
+Decision:
+
+Finish requires `scans.perform` and current ownership of the Product. The
+active ProductAssignment's EmployeeProfile and ProductionRole are authoritative
+for closing the responsibility period and recording `WORK_FINISHED`; the
+worker's currently selected WorkerProductionContext role is not substituted.
+Finish clears current worker and role, preserves current Location, and does not
+set `completedAt`.
+
+---
+
+### D-051: Return-to-process locks worker context before re-resolution
+
+Status: Approved
+
+Decision:
+
+Return-to-process requires `products.reopen` and `scans.perform`. It acquires
+the EmployeeProfile production-mutation lock, then resolves the active
+ProductionRole and handling Location inside the same transaction before
+creating the new ProductAssignment. The operation uses the current Product
+version and never silently retries a conflict.
+
+---
+
+### D-052: Lifecycle timestamps are transition evidence
+
+Status: Approved
+
+Decision:
+
+`completedAt` is set only on `COMPLETED` and cleared when leaving it.
+`cancelledAt` is set on `CANCELLED` and cleared on restoration or logical
+trash. `trashedAt` is set on `TRASHED`. Product `status` is authoritative and
+timestamps do not independently infer state.
+
+---
+
+### D-053: Lifecycle mutations replay immutable safe results
+
+Status: Approved
+
+Decision:
+
+All Phase 8 lifecycle operations use the existing tenant/user-scoped
+`IdempotencyKey` and store a validated safe result DTO. Exact same-key request
+replays return the stored result without duplicate history. A changed request
+with the same key returns an idempotency conflict. Product version
+compare-and-set and the existing one-active-assignment database invariant
+protect concurrent requests.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

@@ -270,6 +270,28 @@ products.trash
 
 These should not be automatically granted to ordinary workers.
 
+## 9.1 Phase 8 enforcement
+
+Phase 8 applies the permissions above on the server for every lifecycle
+mutation:
+
+- Finish work requires `scans.perform` and the authenticated EmployeeProfile
+  must own the current ProductAssignment. The assignment's stored
+  ProductionRole is authoritative; a worker's currently selected role does
+  not rewrite Finish history.
+- Completion requires `products.complete` and is not implied by worker
+  scanning.
+- Return-to-process requires both `products.reopen` and `scans.perform`, plus
+  a valid active EmployeeProfile, assigned active ProductionRole, and active
+  handling Location.
+- Cancellation, restoration, and logical trash require their corresponding
+  `products.*` permission and do not infer authorization from another role or
+  permission.
+
+Ordinary seeded workers receive `scans.perform` but not completion, reopen,
+cancellation, restore, or trash permissions. AccessRole permissions never
+create a ProductionRole assignment.
+
 ## 10. System administrator
 
 System-level administration remains separate from tenant-level administration.

@@ -6,6 +6,7 @@ export {
 } from "./scan-errors";
 export type {
   ActiveProductionHandlingContextDto,
+  ScanCompletedByDto,
   ScanEmployeeDto,
   ScanLocationDto,
   ScanOutcome,

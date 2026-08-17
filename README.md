@@ -1,6 +1,11 @@
 # FactoryFlow
 
-FactoryFlow is a multi-tenant manufacturing execution system. This repository currently contains the Phase 1 foundation, the Phase 2 core database model, the Phase 3 development fixtures, the Phase 4 authentication and authorization foundation, and the Phase 5 Product creation flow.
+FactoryFlow is a multi-tenant manufacturing execution system. This repository
+currently contains the Phase 1 foundation, the Phase 2 core database model,
+the Phase 3 development fixtures, the Phase 4 authentication and
+authorization foundation, the Phase 5 Product creation flow, the Phase 6
+worker production context, the Phase 7 barcode responsibility flows, and the
+Phase 8 Product lifecycle actions.
 
 ## Prerequisites
 
@@ -136,12 +141,20 @@ effective automatically; multiple roles require an explicit selection that is
 persisted across requests. The development seed keeps worker1 on one role and
 worker2 on multiple roles so both paths can be exercised.
 
-## Deliberate Phase 5 and Phase 6 boundaries
+## Product lifecycle actions
 
-This phase includes Product creation and the worker production context only. It
-does not include barcode scanning or printing, later Product lifecycle
-operations, barcode scan business logic, location inference, the workflow
-business engine, reports, or production execution. The seed still establishes
-users without passwords; local password setup and System Admin bootstrap are
-explicit commands. `SYSTEM_ADMIN` remains a platform-level concept and is not
-seeded as a tenant access role.
+Phase 8 adds Finish work from `/app/worker` and explicit scan confirmation,
+explicit completion, return-to-process, cancellation, restoration, logical
+trash, and a minimal management view at `/app/products/[productId]`. Lifecycle
+mutations are server-authorized, version-checked, idempotent, and preserve
+append-only Product history. No workflow progression or physical deletion is
+included.
+
+## Deliberate Phase 8 boundary
+
+Phase 8 does not include workflow progression, expected-next-stage logic,
+issue lifecycle, weights, dashboards, reports, physical deletion, undo, or
+camera scanning. The seed still establishes users without passwords; local
+password setup and System Admin bootstrap are explicit commands.
+`SYSTEM_ADMIN` remains a platform-level concept and is not seeded as a tenant
+access role.

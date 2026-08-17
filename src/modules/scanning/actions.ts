@@ -1,6 +1,10 @@
 "use server";
 
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
+import {
+  finishProduct,
+  returnCompletedProductToProcess,
+} from "@/modules/products/server";
 import { isWorkerContextError } from "@/modules/worker-context";
 
 import { isWorkerScanError } from "./scan-errors";
@@ -17,17 +21,29 @@ function getErrorState(
   error: unknown,
 ): WorkerScanActionState {
   if (isWorkerScanError(error) || isWorkerContextError(error)) {
-    return { result: null, errorCode: error.code };
+    return {
+      ...previousState,
+      result: null,
+      lifecycleResult: null,
+      errorCode: error.code,
+    };
   }
 
   if (isFactoryFlowAuthError(error)) {
     return {
+      ...previousState,
       result: null,
+      lifecycleResult: null,
       errorCode: error.code === "FORBIDDEN" ? "FORBIDDEN" : "UNAUTHORIZED",
     };
   }
 
-  return { ...previousState, result: null, errorCode: "SCAN_FAILED" };
+  return {
+    ...previousState,
+    result: null,
+    lifecycleResult: null,
+    errorCode: "SCAN_FAILED",
+  };
 }
 
 export async function scanProductAction(
@@ -40,7 +56,7 @@ export async function scanProductAction(
       idempotencyKey: getString(formData, "idempotencyKey"),
     });
 
-    return { result, errorCode: null };
+    return { result, lifecycleResult: null, errorCode: null };
   } catch (error) {
     return getErrorState(previousState, error);
   }
@@ -58,7 +74,7 @@ export async function takeOverProductAction(
       idempotencyKey: getString(formData, "idempotencyKey"),
     });
 
-    return { result, errorCode: null };
+    return { result, lifecycleResult: null, errorCode: null };
   } catch (error) {
     return getErrorState(previousState, error);
   }
@@ -68,7 +84,31 @@ export async function workerScanAction(
   previousState: WorkerScanActionState,
   formData: FormData,
 ): Promise<WorkerScanActionState> {
-  return getString(formData, "operation") === "takeover"
-    ? takeOverProductAction(previousState, formData)
-    : scanProductAction(previousState, formData);
+  const operation = getString(formData, "operation");
+  if (operation === "takeover") {
+    return takeOverProductAction(previousState, formData);
+  }
+  if (operation === "finish" || operation === "return_to_process") {
+    try {
+      const input = {
+        productId: getString(formData, "productId"),
+        expectedVersion: Number(getString(formData, "expectedVersion")),
+        idempotencyKey: getString(formData, "idempotencyKey"),
+      };
+      const lifecycleResult =
+        operation === "finish"
+          ? await finishProduct(input)
+          : await returnCompletedProductToProcess(input);
+      return {
+        ...previousState,
+        result: null,
+        lifecycleResult,
+        errorCode: null,
+      };
+    } catch (error) {
+      return getErrorState(previousState, error);
+    }
+  }
+
+  return scanProductAction(previousState, formData);
 }
