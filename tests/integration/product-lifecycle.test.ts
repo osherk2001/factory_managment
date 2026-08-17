@@ -813,30 +813,10 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
       return sessionFor(actor);
     });
 
-    const results = await Promise.allSettled([
+    const [scanResult, completeResult] = await Promise.allSettled([
       scanProduct({ barcode: product.barcode, idempotencyKey: randomUUID() }),
       completeProduct(lifecycleInput(product.id, 0)),
     ]);
-    expect(
-      results.filter((result) => result.status === "fulfilled"),
-    ).toHaveLength(1);
-    expect(
-      results.filter((result) => result.status === "rejected"),
-    ).toHaveLength(1);
-    const rejected = results.find((result) => result.status === "rejected");
-    expect(rejected?.status).toBe("rejected");
-    if (!rejected || rejected.status !== "rejected") {
-      throw new Error(
-        "The receive versus Complete race did not reject an operation.",
-      );
-    }
-    expect(
-      (isWorkerScanError(rejected.reason) &&
-        rejected.reason.code === SCAN_ERROR_CODES.SCAN_CONFLICT) ||
-        (isProductLifecycleError(rejected.reason) &&
-          rejected.reason.code ===
-            PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_STATE_CHANGED),
-    ).toBe(true);
     const finalProduct = await prisma.product.findUniqueOrThrow({
       where: { id: product.id },
       select: {
@@ -850,59 +830,93 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
     });
     expect(finalProduct.version).toBe(1);
 
-    const transitions = await prisma.productTransition.findMany({
-      where: { productId: product.id },
-      select: { eventType: true },
-    });
-    expect(transitions).toHaveLength(1);
+    const [
+      receivedTransitionCount,
+      completedTransitionCount,
+      completionAuditCount,
+      activeAssignmentCount,
+    ] = await Promise.all([
+      prisma.productTransition.count({
+        where: { productId: product.id, eventType: "PRODUCT_RECEIVED" },
+      }),
+      prisma.productTransition.count({
+        where: { productId: product.id, eventType: "PRODUCT_COMPLETED" },
+      }),
+      prisma.auditLog.count({
+        where: { targetId: product.id, action: "product.completed" },
+      }),
+      prisma.productAssignment.count({
+        where: { productId: product.id, endedAt: null },
+      }),
+    ]);
+    expect(receivedTransitionCount + completedTransitionCount).toBe(1);
 
     if (finalProduct.status === ProductStatus.IN_PROGRESS) {
+      expect(scanResult.status).toBe("fulfilled");
+      if (scanResult.status !== "fulfilled") {
+        throw new Error("Receive won without a successful scan result.");
+      }
+      expect(scanResult.value).toMatchObject({
+        scanOutcome: "RECEIVED",
+        status: "IN_PROGRESS",
+        version: 1,
+      });
+      expect(completeResult.status).toBe("rejected");
+      if (completeResult.status !== "rejected") {
+        throw new Error("Receive won without rejecting Complete.");
+      }
+      expect(isProductLifecycleError(completeResult.reason)).toBe(true);
+      if (!isProductLifecycleError(completeResult.reason)) {
+        throw new Error("Complete failed with an unexpected error type.");
+      }
+      expect(completeResult.reason.code).toBe(
+        PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_STATE_CHANGED,
+      );
       expect(finalProduct).toMatchObject({
         currentWorkerId: workerA.employee.id,
         currentRoleId: roleA.id,
         currentLocationId: locationA.id,
         completedAt: null,
       });
-      expect(transitions).toEqual([{ eventType: "PRODUCT_RECEIVED" }]);
-      await expect(
-        prisma.productAssignment.count({
-          where: { productId: product.id, endedAt: null },
-        }),
-      ).resolves.toBe(1);
-      await expect(
-        prisma.productTransition.count({
-          where: { productId: product.id, eventType: "PRODUCT_COMPLETED" },
-        }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.auditLog.count({
-          where: { targetId: product.id, action: "product.completed" },
-        }),
-      ).resolves.toBe(0);
+      expect(activeAssignmentCount).toBe(1);
+      expect(receivedTransitionCount).toBe(1);
+      expect(completedTransitionCount).toBe(0);
+      expect(completionAuditCount).toBe(0);
     } else {
       expect(finalProduct.status).toBe(ProductStatus.COMPLETED);
+      expect(completeResult.status).toBe("fulfilled");
+      if (completeResult.status !== "fulfilled") {
+        throw new Error("Complete won without a successful lifecycle result.");
+      }
+      expect(completeResult.value).toMatchObject({
+        status: "COMPLETED",
+        version: 1,
+      });
+      if (scanResult.status === "fulfilled") {
+        expect(scanResult.value.status).toBe("COMPLETED");
+        expect(scanResult.value.scanOutcome).not.toBe("RECEIVED");
+        expect([
+          "COMPLETED_SAME_DEPARTMENT",
+          "COMPLETED_OTHER_DEPARTMENT",
+          "COMPLETED_CONTEXT_UNKNOWN",
+        ]).toContain(scanResult.value.scanOutcome);
+      } else {
+        expect(isWorkerScanError(scanResult.reason)).toBe(true);
+        if (!isWorkerScanError(scanResult.reason)) {
+          throw new Error("Scan failed with an unexpected error type.");
+        }
+        expect(scanResult.reason.code).toBe(SCAN_ERROR_CODES.SCAN_CONFLICT);
+      }
       expect(finalProduct).toMatchObject({
         currentWorkerId: null,
         currentRoleId: null,
         currentLocationId: locationA.id,
         completedAt: expect.any(Date),
       });
-      expect(transitions).toEqual([{ eventType: "PRODUCT_COMPLETED" }]);
-      await expect(
-        prisma.productAssignment.count({
-          where: { productId: product.id, endedAt: null },
-        }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.productTransition.count({
-          where: { productId: product.id, eventType: "PRODUCT_RECEIVED" },
-        }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.auditLog.count({
-          where: { targetId: product.id, action: "product.completed" },
-        }),
-      ).resolves.toBe(1);
+      expect(activeAssignmentCount).toBe(0);
+      expect(receivedTransitionCount).toBe(0);
+      expect(completedTransitionCount).toBe(1);
+      expect(completionAuditCount).toBe(1);
     }
   });
 
