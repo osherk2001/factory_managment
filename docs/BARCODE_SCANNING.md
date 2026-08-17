@@ -197,11 +197,15 @@ The database must enforce that a Product cannot have two active assignments.
 
 Receive and takeover use the Product `version` as a compare-and-set token,
 reserve a tenant/user-scoped idempotency key inside the transaction, and
-re-resolve the worker's effective active ProductionRole and its handling
-Location inside the state-changing transaction. The pre-transaction worker
-context is not authoritative for Product mutation. State-changing scan
-transactions use serializable isolation so a concurrent active-role change is
-not silently paired with a stale Product mutation.
+acquire the worker's `EmployeeProfile` row lock before re-resolving the
+effective active ProductionRole and its handling Location. The pre-transaction
+worker context is not authoritative for Product mutation.
+
+The EmployeeProfile row lock serializes worker ProductionRole selection against
+state-changing responsibility mutations. Product `version` compare-and-set
+remains the separate guard for competing Product responsibility changes, and
+the existing one-active-assignment database constraint remains a second
+integrity defense.
 
 A takeover confirmation with a stale Product version returns `SCAN_CONFLICT`,
 because the Product state changed after the warning was shown. Genuine domain

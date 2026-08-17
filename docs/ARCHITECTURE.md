@@ -152,6 +152,7 @@ Phase 6 adds the worker production-context boundary:
 src/modules/worker-context/
   employee-context.service.ts       Membership-to-EmployeeProfile resolution
   production-role-context.service.ts assigned-role validation and persistence
+  production-context-lock.ts         shared EmployeeProfile row mutex for context mutations
   worker-products.service.ts         tenant-scoped personal Product DTOs
   worker-home.service.ts             worker home application data
   actions.ts                         active ProductionRole server action
@@ -307,6 +308,11 @@ The architecture must support:
 - state revalidation inside transaction
 - one active assignment per Product
 - row-level or equivalent concurrency protection
+
+The per-worker production-context mutex is the `EmployeeProfile` row. Both
+ProductionRole selection and state-changing worker scans acquire it before
+authoritative role/location resolution. Product `version` compare-and-set and
+the one-active-assignment constraint remain separate Product-level protections.
 
 ## 11. Workflow philosophy
 

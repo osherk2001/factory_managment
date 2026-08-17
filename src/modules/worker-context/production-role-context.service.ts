@@ -5,7 +5,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { requirePermission } from "@/modules/authorization";
 
-import { resolveEmployeeContext } from "./employee-context.service";
+import {
+  resolveEmployeeContext,
+  resolveEmployeeContextForDatabase,
+} from "./employee-context.service";
+import { lockEmployeeForProductionMutation } from "./production-context-lock";
 import {
   WorkerContextError,
   WORKER_CONTEXT_ERROR_CODES,
@@ -132,42 +136,56 @@ export async function selectActiveProductionRole(
     );
   }
 
-  const roleLink = await prisma.employeeProductionRole.findFirst({
-    where: {
-      organizationId: employee.organizationId,
-      employeeId: employee.employeeId,
-      productionRoleId: parsedRoleId.data,
-      productionRole: { isActive: true },
-    },
-    select: {
-      productionRole: {
-        select: { id: true },
-      },
-    },
-  });
-
-  if (!roleLink) {
-    throw new WorkerContextError(
-      WORKER_CONTEXT_ERROR_CODES.PRODUCTION_ROLE_NOT_AVAILABLE,
+  const committedEmployee = await prisma.$transaction(async (database) => {
+    await lockEmployeeForProductionMutation(
+      database,
+      employee.organizationId,
+      employee.employeeId,
     );
-  }
 
-  await prisma.workerProductionContext.upsert({
-    where: {
-      organizationId_employeeId: {
-        organizationId: employee.organizationId,
-        employeeId: employee.employeeId,
+    const currentEmployee = await resolveEmployeeContextForDatabase(
+      database,
+      tenant,
+    );
+    const roleLink = await database.employeeProductionRole.findFirst({
+      where: {
+        organizationId: currentEmployee.organizationId,
+        employeeId: currentEmployee.employeeId,
+        productionRoleId: parsedRoleId.data,
+        productionRole: { isActive: true },
       },
-    },
-    create: {
-      organizationId: employee.organizationId,
-      employeeId: employee.employeeId,
-      activeProductionRoleId: roleLink.productionRole.id,
-    },
-    update: {
-      activeProductionRoleId: roleLink.productionRole.id,
-    },
+      select: {
+        productionRole: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!roleLink) {
+      throw new WorkerContextError(
+        WORKER_CONTEXT_ERROR_CODES.PRODUCTION_ROLE_NOT_AVAILABLE,
+      );
+    }
+
+    await database.workerProductionContext.upsert({
+      where: {
+        organizationId_employeeId: {
+          organizationId: currentEmployee.organizationId,
+          employeeId: currentEmployee.employeeId,
+        },
+      },
+      create: {
+        organizationId: currentEmployee.organizationId,
+        employeeId: currentEmployee.employeeId,
+        activeProductionRoleId: roleLink.productionRole.id,
+      },
+      update: {
+        activeProductionRoleId: roleLink.productionRole.id,
+      },
+    });
+
+    return currentEmployee;
   });
 
-  return resolveWorkerProductionRoleState(employee);
+  return resolveWorkerProductionRoleState(committedEmployee);
 }

@@ -11,6 +11,7 @@ vi.mock("../../src/auth", () => ({ auth: vi.fn() }));
 import { auth } from "../../src/auth";
 import { prisma } from "../../src/lib/db/client";
 import * as handlingContextService from "../../src/modules/scanning/handling-context.service";
+import * as productionContextLock from "../../src/modules/worker-context/production-context-lock";
 import { isFactoryFlowAuthError } from "../../src/modules/auth/auth-errors";
 import {
   listAvailableProductionRoles,
@@ -202,6 +203,14 @@ async function expectScanError(operation: Promise<unknown>, code: string) {
   await expect(operation).rejects.toSatisfy((error: unknown) => {
     return isWorkerScanError(error) && error.code === code;
   });
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 describe.sequential("Phase 7 barcode scanning and responsibility", () => {
@@ -938,16 +947,22 @@ describe.sequential("Phase 7 barcode scanning and responsibility", () => {
     });
     await createActiveAssignment(product.id, workerA, locationA.id);
 
-    let sessionIndex = 0;
-    const sessions = [
-      sessionFor(workerB),
-      sessionFor(workerB),
-      sessionFor(workerC),
-      sessionFor(workerC),
-    ];
-    authMock.mockImplementation(
-      async () => sessions[sessionIndex++] ?? sessions[0] ?? null,
-    );
+    const firstAuthCallsReady = deferred();
+    let authCall = 0;
+    let firstAuthCallCount = 0;
+    authMock.mockImplementation(async () => {
+      const call = authCall++;
+      if (call < 2) {
+        firstAuthCallCount += 1;
+        if (firstAuthCallCount === 2) {
+          firstAuthCallsReady.resolve();
+        }
+        await firstAuthCallsReady.promise;
+        return sessionFor(call === 0 ? workerB : workerC);
+      }
+
+      return sessionFor(call === 2 ? workerB : workerC);
+    });
 
     const results = await Promise.allSettled([
       takeOverProduct({
@@ -1115,6 +1130,235 @@ describe.sequential("Phase 7 barcode scanning and responsibility", () => {
       toRoleId: secondRole.id,
       toLocationId: locationA2.id,
     });
+  });
+
+  it("holds the EmployeeProfile lock while a scan finishes before role selection", async () => {
+    const nextRole = await prisma.productionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        code: `PHASE7-ROLE-SCAN-FIRST-${suffix}`,
+        name: "Phase 7 Scan First Role",
+      },
+      select: { id: true },
+    });
+    await prisma.employeeProductionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        employeeId: workerA.employee.id,
+        productionRoleId: nextRole.id,
+        handlingLocationId: locationA2.id,
+      },
+    });
+
+    setWorkerSession(workerA);
+    await selectActiveProductionRole(roleA.id);
+    const product = await createProduct("scan-lock-first");
+    const scanLockAcquired = deferred();
+    const roleLockAttempted = deferred();
+    const releaseScan = deferred();
+    const originalLock =
+      productionContextLock.lockEmployeeForProductionMutation;
+    let lockCall = 0;
+    const lockSpy = vi
+      .spyOn(productionContextLock, "lockEmployeeForProductionMutation")
+      .mockImplementation(async (database, organizationId, employeeId) => {
+        const call = lockCall++;
+        if (call === 0) {
+          await originalLock(database, organizationId, employeeId);
+          scanLockAcquired.resolve();
+          await releaseScan.promise;
+        } else {
+          roleLockAttempted.resolve();
+          await originalLock(database, organizationId, employeeId);
+        }
+      });
+
+    try {
+      const scanPromise = scanProduct({
+        barcode: product.barcode,
+        idempotencyKey: randomUUID(),
+      });
+      await scanLockAcquired.promise;
+
+      let roleSelectionCompleted = false;
+      const roleSelectionPromise = selectActiveProductionRole(nextRole.id).then(
+        (state) => {
+          roleSelectionCompleted = true;
+          return state;
+        },
+      );
+      await roleLockAttempted.promise;
+      expect(roleSelectionCompleted).toBe(false);
+
+      releaseScan.resolve();
+      const [scanResult, roleState] = await Promise.all([
+        scanPromise,
+        roleSelectionPromise,
+      ]);
+      expect(scanResult).toMatchObject({
+        currentRole: { id: roleA.id },
+        currentLocation: { id: locationA.id },
+      });
+      expect(roleState.activeProductionRole?.id).toBe(nextRole.id);
+      await expect(
+        prisma.workerProductionContext.findUniqueOrThrow({
+          where: {
+            organizationId_employeeId: {
+              organizationId: organizationA.id,
+              employeeId: workerA.employee.id,
+            },
+          },
+          select: { activeProductionRoleId: true },
+        }),
+      ).resolves.toEqual({ activeProductionRoleId: nextRole.id });
+      await expect(
+        prisma.productTransition.findFirstOrThrow({
+          where: { productId: product.id },
+          select: { toRoleId: true, toLocationId: true },
+        }),
+      ).resolves.toEqual({
+        toRoleId: roleA.id,
+        toLocationId: locationA.id,
+      });
+    } finally {
+      releaseScan.resolve();
+      lockSpy.mockRestore();
+    }
+  });
+
+  it("waits for role selection before scanning and then uses the new role", async () => {
+    const nextRole = await prisma.productionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        code: `PHASE7-ROLE-ROLE-FIRST-${suffix}`,
+        name: "Phase 7 Role First Role",
+      },
+      select: { id: true },
+    });
+    await prisma.employeeProductionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        employeeId: workerA.employee.id,
+        productionRoleId: nextRole.id,
+        handlingLocationId: locationA2.id,
+      },
+    });
+
+    setWorkerSession(workerA);
+    await selectActiveProductionRole(roleA.id);
+    const product = await createProduct("role-lock-first");
+    const roleLockAcquired = deferred();
+    const scanLockAttempted = deferred();
+    const releaseRoleSelection = deferred();
+    const originalLock =
+      productionContextLock.lockEmployeeForProductionMutation;
+    let lockCall = 0;
+    const lockSpy = vi
+      .spyOn(productionContextLock, "lockEmployeeForProductionMutation")
+      .mockImplementation(async (database, organizationId, employeeId) => {
+        const call = lockCall++;
+        if (call === 0) {
+          await originalLock(database, organizationId, employeeId);
+          roleLockAcquired.resolve();
+          await releaseRoleSelection.promise;
+          return;
+        }
+
+        scanLockAttempted.resolve();
+        await originalLock(database, organizationId, employeeId);
+      });
+
+    try {
+      const roleSelectionPromise = selectActiveProductionRole(nextRole.id);
+      await roleLockAcquired.promise;
+
+      let scanCompleted = false;
+      const scanPromise = scanProduct({
+        barcode: product.barcode,
+        idempotencyKey: randomUUID(),
+      }).then((result) => {
+        scanCompleted = true;
+        return result;
+      });
+      await scanLockAttempted.promise;
+      expect(scanCompleted).toBe(false);
+
+      releaseRoleSelection.resolve();
+      const [roleState, scanResult] = await Promise.all([
+        roleSelectionPromise,
+        scanPromise,
+      ]);
+      expect(roleState.activeProductionRole?.id).toBe(nextRole.id);
+      expect(scanResult).toMatchObject({
+        currentRole: { id: nextRole.id },
+        currentLocation: { id: locationA2.id },
+      });
+      await expect(
+        prisma.productAssignment.findFirstOrThrow({
+          where: { productId: product.id, endedAt: null },
+          select: { productionRoleId: true, locationId: true },
+        }),
+      ).resolves.toEqual({
+        productionRoleId: nextRole.id,
+        locationId: locationA2.id,
+      });
+    } finally {
+      releaseRoleSelection.resolve();
+      lockSpy.mockRestore();
+    }
+  });
+
+  it("serializes concurrent role selections for one employee", async () => {
+    const firstRole = await prisma.productionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        code: `PHASE7-ROLE-CONCURRENT-A-${suffix}`,
+        name: "Phase 7 Concurrent Role A",
+      },
+      select: { id: true },
+    });
+    const secondRole = await prisma.productionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        code: `PHASE7-ROLE-CONCURRENT-B-${suffix}`,
+        name: "Phase 7 Concurrent Role B",
+      },
+      select: { id: true },
+    });
+    await prisma.employeeProductionRole.createMany({
+      data: [
+        {
+          organizationId: organizationA.id,
+          employeeId: workerA.employee.id,
+          productionRoleId: firstRole.id,
+          handlingLocationId: locationA.id,
+        },
+        {
+          organizationId: organizationA.id,
+          employeeId: workerA.employee.id,
+          productionRoleId: secondRole.id,
+          handlingLocationId: locationA2.id,
+        },
+      ],
+    });
+
+    setWorkerSession(workerA);
+    const states = await Promise.all([
+      selectActiveProductionRole(firstRole.id),
+      selectActiveProductionRole(secondRole.id),
+    ]);
+    expect(states).toHaveLength(2);
+    const contextRows = await prisma.workerProductionContext.findMany({
+      where: {
+        organizationId: organizationA.id,
+        employeeId: workerA.employee.id,
+      },
+      select: { activeProductionRoleId: true },
+    });
+    expect(contextRows).toHaveLength(1);
+    expect([firstRole.id, secondRole.id]).toContain(
+      contextRows[0]?.activeProductionRoleId,
+    );
   });
 
   it("allows only one concurrent receive and preserves the one-active-assignment invariant", async () => {

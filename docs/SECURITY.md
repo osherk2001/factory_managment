@@ -120,6 +120,12 @@ Changing the persisted working role requires `scans.perform`. A stale role is
 never used: it is ignored and the worker must use the remaining valid role or
 make a new explicit selection.
 
+`EmployeeProfile` is the per-worker production-context mutex. ProductionRole
+selection and state-changing scan actions acquire the same row-level
+PostgreSQL lock before revalidating or updating production context. The lock
+serializes worker context changes; Product `version` compare-and-set remains
+the separate guard for competing Product responsibility mutations.
+
 ## 9. Scan security
 
 Barcode values must be unique and non-guessable.
@@ -152,9 +158,9 @@ Phase 7 treats a scanned value as an untrusted decoded string. It is trimmed
 and length-limited before use; every lookup includes the trusted
 `organizationId`. The active ProductionRole and its
 `EmployeeProductionRole.handlingLocationId` are revalidated, including
-production-role and Location activity, inside the receive/takeover
-transaction. A foreign barcode is reported as unavailable rather than
-disclosed.
+production-role and Location activity, inside the receive/takeover transaction
+after the EmployeeProfile row lock is acquired. A foreign barcode is reported
+as unavailable rather than disclosed.
 
 Product `targetAt` values are accepted by the server only with an explicit ISO
 timezone or offset. The browser converts its local `datetime-local` value to a
@@ -178,9 +184,11 @@ compare-and-set predicate. The existing PostgreSQL partial unique index on
 active ProductAssignments remains a second integrity defense. Same-worker
 confirmation and completed-product department classification do not mutate
 state in Phase 7. State-changing scans re-resolve the effective active
-ProductionRole and role-specific handling Location inside the transaction; the
-pre-transaction worker context is not trusted for Product mutation. A stale
-takeover version is reported as `SCAN_CONFLICT` so the worker can scan again.
+ProductionRole and role-specific handling Location inside the transaction after
+acquiring the EmployeeProfile mutex; the pre-transaction worker context is not
+trusted for Product mutation. Product `version` compare-and-set remains the
+separate Product-level concurrency guard. A stale takeover version is reported
+as `SCAN_CONFLICT` so the worker can scan again.
 
 ## 11. Rate limiting
 

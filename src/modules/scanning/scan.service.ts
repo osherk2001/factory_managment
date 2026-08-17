@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
 import { requirePermission, type TenantContext } from "@/modules/authorization";
+import { lockEmployeeForProductionMutation } from "@/modules/worker-context/production-context-lock";
 
 import {
   resolveActiveProductionHandlingContextForTenant,
@@ -292,6 +293,12 @@ async function receiveProductTransaction(
 ): Promise<WorkerScanResult> {
   return prisma.$transaction(
     async (database) => {
+      await lockEmployeeForProductionMutation(
+        database,
+        context.tenant.organizationId,
+        context.employee.employeeId,
+      );
+
       const currentContext =
         await resolveCurrentProductionHandlingContextInTransaction(
           database,
@@ -422,7 +429,7 @@ async function receiveProductTransaction(
 
       return result;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
   );
 }
 
@@ -548,6 +555,12 @@ async function takeOverProductTransaction(
 ): Promise<WorkerScanResult> {
   return prisma.$transaction(
     async (database) => {
+      await lockEmployeeForProductionMutation(
+        database,
+        context.tenant.organizationId,
+        context.employee.employeeId,
+      );
+
       const currentContext =
         await resolveCurrentProductionHandlingContextInTransaction(
           database,
@@ -719,7 +732,7 @@ async function takeOverProductTransaction(
 
       return result;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
   );
 }
 

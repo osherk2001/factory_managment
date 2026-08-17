@@ -939,6 +939,32 @@ This keeps device-specific decoding replaceable, prevents cross-tenant or
 stale worker context from authorizing a scan, and adds concurrency protection
 without beginning the finish/completion or workflow phases.
 
+---
+
+### D-048: EmployeeProfile serializes worker production context mutations
+
+Status: Approved
+
+Decision:
+
+`EmployeeProfile` is the stable per-worker mutex for production context. Both
+state-changing receive/takeover transactions and
+`selectActiveProductionRole` acquire the same PostgreSQL row lock before
+authoritative role/location resolution or context update.
+`WorkerProductionContext` remains optional for single-role automatic workers.
+
+The EmployeeProfile lock protects worker ProductionRole context races.
+Product `version` compare-and-set and the one-active-assignment constraint
+remain separate Product responsibility protections.
+
+Reason:
+
+A WorkerProductionContext row may not exist for a single-role worker, and a
+stable EmployeeProfile row provides one scoped mutex without adding
+infrastructure or schema. The transaction must re-read authoritative context
+after waiting for the lock so a role-selection commit cannot be paired with an
+older role or handling Location.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:
