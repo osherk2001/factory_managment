@@ -374,8 +374,10 @@ Defines which ProductionRoles an employee may perform.
 Suggested columns:
 
 ```text
+organizationId     UUID FK -> Organization.id
 employeeId          UUID FK -> EmployeeProfile.id
 productionRoleId    UUID FK -> ProductionRole.id
+handlingLocationId  UUID NULL FK -> Location.id
 createdAt           TIMESTAMPTZ NOT NULL
 ```
 
@@ -383,9 +385,16 @@ Constraints:
 
 ```text
 PRIMARY KEY(employeeId, productionRoleId)
+INDEX(organizationId, handlingLocationId)
 ```
 
-The server must validate this relationship whenever the worker selects an active ProductionRole.
+`handlingLocationId` belongs to the employee/ProductionRole assignment
+rather than to the reusable ProductionRole. The composite foreign key
+`(organizationId, handlingLocationId)` prevents a role assignment from
+pointing at another tenant's Location. A missing or inactive handling
+Location makes the worker context unavailable for scanning. The server
+revalidates the role assignment and Location immediately before each scan
+transaction.
 
 ## WorkerProductionContext
 
@@ -583,7 +592,9 @@ Important:
 
 `status`, `currentWorkerId`, `currentRoleId`, and `currentLocationId` are intentionally separate.
 
-`version` is reserved for optimistic concurrency control if required by the scan implementation.
+`version` is the optimistic concurrency token for Product receive and
+takeover scans. A state-changing scan updates the Product with a predicate
+containing the expected version and rejects a zero-row update as a conflict.
 
 `currentStageId` references `WorkflowSnapshotStage` together with the Product
 identity. The database therefore requires the stage to belong to the
@@ -1023,6 +1034,14 @@ Conceptual transaction:
 ```
 
 If any step fails, the whole operation must roll back.
+
+Phase 7 implements receive and takeover with a PostgreSQL compare-and-set
+update on `Product.version`. The existing partial unique index on
+`ProductAssignment(productId) WHERE endedAt IS NULL` remains a database
+backstop for the one-active-assignment invariant. Completed-product
+department classification and same-worker confirmation are read-only in this
+phase; finish and completed-product return-to-process mutations are later
+phases.
 
 ## 8. Concurrency protection
 

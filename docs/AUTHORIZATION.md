@@ -221,8 +221,18 @@ A worker may:
 
 - perform scan actions only with `scans.perform`
 - use only ProductionRoles assigned to the employee
+- use only the active, tenant-scoped handling Location attached to that
+  employee/ProductionRole assignment
 - finish only an active assignment they currently own unless elevated permission exists
 - take over another worker's Product only through the explicit takeover flow
+
+Phase 7 keeps `scans.perform` and `scans.takeover` separate. A scan warning
+may identify that another worker currently owns a Product, but responsibility
+does not change until a separate request is authorized with
+`scans.takeover`. AccessRole permissions never create or imply an
+EmployeeProductionRole assignment. Inactive memberships, inactive production
+roles, inactive handling Locations, and cross-tenant role or barcode values
+are rejected without revealing foreign resource existence.
 
 ## 7. Completion rules
 

@@ -20,11 +20,12 @@ Requirements:
 
 Exact symbology remains replaceable until real printer and phone-camera testing is complete.
 
-Phase 5 establishes the Product barcode identity only. New Products receive a
-globally unique `ff_` value generated from cryptographically secure random
-bytes; the value is not a Product ID or serial number. Scanning, barcode
-rendering, printing, and reprinting remain later operations and are not
-implemented by the Product creation flow.
+Phase 5 establishes the Product barcode identity. Phase 7 accepts the
+decoded barcode string at a server action boundary; it does not include a
+camera library or make the browser camera part of the business contract. New
+Products receive a globally unique `ff_` value generated from
+cryptographically secure random bytes; the value is not a Product ID or
+serial number.
 
 ## 3. First scan
 
@@ -49,6 +50,11 @@ The operation:
 - sets current location
 - records workflow stage
 - appends ProductTransition
+
+The scan resolves the worker's active role assignment, including its
+role-specific handling Location. The barcode lookup is scoped by the trusted
+Organization; an unknown barcode and a barcode from another tenant have the
+same safe result.
 
 ## 4. READY_FOR_HANDOFF scan
 
@@ -77,7 +83,11 @@ Finish work?
 
 - no changes
 
-`Yes`:
+In Phase 7, the scan only opens the confirmation state. The `Yes` mutation,
+which closes the assignment and moves the Product to `READY_FOR_HANDOFF`, is
+deferred to the finish/completion phase.
+
+Later-phase `Yes` behavior:
 
 - closes active ProductAssignment
 - records completion time
@@ -116,6 +126,10 @@ Takeover:
 
 ## 7. Scanning a completed Product in same previous department
 
+Phase 7 performs classification only. It reports whether the scanning
+worker's handling Location is in the same department, another department, or
+an unknown context. It does not reopen or mutate a completed Product.
+
 Show warning:
 
 ```text
@@ -127,7 +141,7 @@ Cancel:
 
 - no changes
 
-Return to process:
+Later-phase return-to-process behavior:
 
 - creates new ProductAssignment
 - status becomes `IN_PROGRESS`
@@ -139,7 +153,11 @@ Return to process:
 
 ## 8. Scanning a completed Product in another department
 
-The Product moves to the scanning worker's department and returns to active work.
+Phase 7 performs the same read-only classification for another department.
+The state-changing return-to-process flow remains deferred.
+
+Later-phase behavior: the Product moves to the scanning worker's department
+and returns to active work.
 
 The operation:
 
@@ -176,6 +194,10 @@ The server must:
 - reject or redirect stale actions safely
 
 The database must enforce that a Product cannot have two active assignments.
+
+Receive and takeover use the Product `version` as a compare-and-set token,
+reserve a tenant/user-scoped idempotency key inside the transaction, and
+revalidate the active role and handling Location inside that transaction.
 
 ## 12. Client behavior
 

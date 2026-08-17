@@ -244,18 +244,21 @@ model ProductionRole {
 }
 
 model EmployeeProductionRole {
-  organizationId   String   @db.Uuid
-  employeeId       String   @db.Uuid
-  productionRoleId String   @db.Uuid
-  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  organizationId     String   @db.Uuid
+  employeeId         String   @db.Uuid
+  productionRoleId   String   @db.Uuid
+  handlingLocationId String?  @db.Uuid
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  employee       EmployeeProfile @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
-  productionRole ProductionRole  @relation(fields: [organizationId, productionRoleId], references: [organizationId, id], onDelete: Restrict)
+  organization     Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee         EmployeeProfile @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
+  productionRole   ProductionRole  @relation(fields: [organizationId, productionRoleId], references: [organizationId, id], onDelete: Restrict)
+  handlingLocation Location?       @relation(fields: [organizationId, handlingLocationId], references: [organizationId, id], onDelete: Restrict)
 
   @@id([employeeId, productionRoleId])
   @@index([organizationId])
   @@index([productionRoleId])
+  @@index([organizationId, handlingLocationId])
 }
 
 model WorkerProductionContext {
@@ -306,6 +309,7 @@ model Location {
   department      Department?         @relation(fields: [organizationId, departmentId], references: [organizationId, id], onDelete: Restrict)
   currentProducts Product[]           @relation("ProductCurrentLocation")
   assignments     ProductAssignment[]
+  employeeProductionRoleLinks EmployeeProductionRole[]
   transitionsFrom ProductTransition[] @relation("ProductTransitionFromLocations")
   transitionsTo   ProductTransition[] @relation("ProductTransitionToLocations")
 

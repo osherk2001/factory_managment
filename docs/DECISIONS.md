@@ -917,6 +917,28 @@ Production work context must survive requests without being confused with
 software permissions, and stale assignments must fail safely at the server
 trust boundary.
 
+### D-047: Phase 7 scanning uses decoded barcodes and role-specific handling locations
+
+Status: Approved
+
+Decision:
+
+Phase 7 accepts a decoded barcode string from the worker UI; no camera or
+barcode-scanning library is part of the business boundary yet. The handling
+Location is stored on `EmployeeProductionRole`, because a reusable
+ProductionRole does not determine where every employee works. Receive and
+takeover mutations revalidate that assignment and Location, use Product
+optimistic version compare-and-set, and preserve the existing partial unique
+index for one active assignment. Same-worker scans only request finish
+confirmation, and completed-product scans only classify the previous
+department in this phase. Workflow stage selection remains deferred.
+
+Reason:
+
+This keeps device-specific decoding replaceable, prevents cross-tenant or
+stale worker context from authorizing a scan, and adds concurrency protection
+without beginning the finish/completion or workflow phases.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

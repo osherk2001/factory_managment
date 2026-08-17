@@ -148,6 +148,14 @@ Product serials use an atomic tenant/year counter. Barcode identities use
 cryptographically secure random bytes with bounded uniqueness retries and do
 not contain sequential IDs or business data.
 
+Phase 7 treats a scanned value as an untrusted decoded string. It is trimmed
+and length-limited before use; every lookup includes the trusted
+`organizationId`. The active ProductionRole and its
+`EmployeeProductionRole.handlingLocationId` are revalidated, including
+production-role and Location activity, inside the receive/takeover
+transaction. A foreign barcode is reported as unavailable rather than
+disclosed.
+
 Product `targetAt` values are accepted by the server only with an explicit ISO
 timezone or offset. The browser converts its local `datetime-local` value to a
 UTC ISO instant before submission, so the server timezone cannot change the
@@ -163,6 +171,13 @@ State-changing requests must support:
 - duplicate request prevention
 
 A retry must not create duplicate ProductTransitions or ProductAssignments.
+
+Receive and takeover reserve an idempotency key scoped to the tenant and
+actor, store a validated safe result snapshot, and use Product `version` as a
+compare-and-set predicate. The existing PostgreSQL partial unique index on
+active ProductAssignments remains a second integrity defense. Same-worker
+confirmation and completed-product department classification do not mutate
+state in Phase 7.
 
 ## 11. Rate limiting
 

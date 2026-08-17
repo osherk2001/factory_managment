@@ -733,32 +733,6 @@ export async function seedDevelopmentFixtures(
       productionRolesByCode.set(roleFixture.code, productionRole);
     }
 
-    let employeeProductionRoles = 0;
-    for (const [employeeKey, productionRoleCode] of EMPLOYEE_PRODUCTION_ROLES) {
-      const employee = employeeProfilesByKey.get(employeeKey);
-      const productionRole = productionRolesByCode.get(productionRoleCode);
-      if (!employee || !productionRole) {
-        throw new Error(
-          `Missing employee or production role for ${employeeKey}/${productionRoleCode}`,
-        );
-      }
-      await tx.employeeProductionRole.upsert({
-        where: {
-          employeeId_productionRoleId: {
-            employeeId: employee.id,
-            productionRoleId: productionRole.id,
-          },
-        },
-        update: { organizationId: organization.id },
-        create: {
-          organizationId: organization.id,
-          employeeId: employee.id,
-          productionRoleId: productionRole.id,
-        },
-      });
-      employeeProductionRoles += 1;
-    }
-
     const departmentsByCode = new Map<string, { id: string }>();
     for (const departmentFixture of DEPARTMENT_FIXTURES) {
       const department = await tx.department.upsert({
@@ -812,6 +786,94 @@ export async function seedDevelopmentFixtures(
           isActive: true,
         },
       });
+    }
+
+    const locationsByCode = new Map<string, { id: string }>();
+    for (const locationFixture of LOCATION_FIXTURES) {
+      const location = await tx.location.findUniqueOrThrow({
+        where: {
+          organizationId_code: {
+            organizationId: organization.id,
+            code: locationFixture.code,
+          },
+        },
+        select: { id: true },
+      });
+      locationsByCode.set(locationFixture.code, location);
+    }
+
+    const handlingLocationByAssignment = new Map<
+      string,
+      { employeeKey: string; productionRoleCode: string; locationCode: string }
+    >([
+      [
+        "worker1/POLISHER",
+        {
+          employeeKey: "worker1",
+          productionRoleCode: "POLISHER",
+          locationCode: "POLISHING_WORK_AREA",
+        },
+      ],
+      [
+        "worker2/POLISHER",
+        {
+          employeeKey: "worker2",
+          productionRoleCode: "POLISHER",
+          locationCode: "POLISHING_WORK_AREA",
+        },
+      ],
+      [
+        "worker2/STONE_SETTER",
+        {
+          employeeKey: "worker2",
+          productionRoleCode: "STONE_SETTER",
+          locationCode: "STONE_SETTING_WORK_AREA",
+        },
+      ],
+      [
+        "qc/QUALITY_INSPECTOR",
+        {
+          employeeKey: "qc",
+          productionRoleCode: "QUALITY_INSPECTOR",
+          locationCode: "QUALITY_CONTROL_WORK_AREA",
+        },
+      ],
+    ]);
+
+    let employeeProductionRoles = 0;
+    for (const [employeeKey, productionRoleCode] of EMPLOYEE_PRODUCTION_ROLES) {
+      const employee = employeeProfilesByKey.get(employeeKey);
+      const productionRole = productionRolesByCode.get(productionRoleCode);
+      const assignment = handlingLocationByAssignment.get(
+        `${employeeKey}/${productionRoleCode}`,
+      );
+      const location = assignment
+        ? locationsByCode.get(assignment.locationCode)
+        : undefined;
+      if (!employee || !productionRole || !location) {
+        throw new Error(
+          `Missing employee, production role, or handling location for ${employeeKey}/${productionRoleCode}`,
+        );
+      }
+      await tx.employeeProductionRole.upsert({
+        where: {
+          employeeId_productionRoleId: {
+            employeeId: employee.id,
+            productionRoleId: productionRole.id,
+          },
+        },
+        update: {
+          organizationId: organization.id,
+          handlingLocationId: location.id,
+        },
+        create: {
+          organizationId: organization.id,
+          employeeId: employee.id,
+          productionRoleId: productionRole.id,
+          handlingLocationId: location.id,
+        },
+      });
+      employeeProductionRoles += 1;
     }
 
     return {

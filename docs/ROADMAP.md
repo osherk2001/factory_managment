@@ -167,6 +167,8 @@ scanning, location inference, or workflow execution.
 
 ## Phase 7 — Barcode scanning and responsibility
 
+Status: Implemented
+
 Implement documented scan flows:
 
 - CREATED receive
@@ -183,6 +185,15 @@ Requirements:
 - concurrency protection
 - one active assignment invariant
 - integration tests
+
+Phase 7 accepts decoded barcode strings through `/app/worker/scan` and
+implements tenant-scoped CREATED/READY_FOR_HANDOFF receive, same-worker
+confirmation, explicit takeover, terminal-state blocking, and read-only
+completed-department classification. Receive and takeover use idempotency,
+Product version compare-and-set, the existing one-active-assignment partial
+unique index, and append-only assignment/transition history. Camera capture,
+finish, completion, return-to-process, cancellation, trash, and workflow
+execution remain later phases.
 
 ## Phase 8 — Finish, completion, cancel, restore, trash
 

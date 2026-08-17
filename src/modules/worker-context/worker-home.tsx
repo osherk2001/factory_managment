@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 
 import { defaultLocale, getMessages } from "@/lib/i18n";
@@ -239,6 +240,14 @@ export function WorkerHome({ data }: { data: WorkerHomeData }) {
           ) : (
             <RoleSelection data={data} />
           )}
+
+          <Link
+            className="inline-flex min-h-12 items-center rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground"
+            data-testid="worker-scan-link"
+            href="/app/worker/scan"
+          >
+            {messages.worker.scanProduct}
+          </Link>
         </section>
 
         <section className="space-y-4">
