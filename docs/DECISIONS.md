@@ -891,6 +891,32 @@ Reason:
 A timezone-less datetime interpreted on the server can represent a different
 instant from the one selected by the user.
 
+---
+
+### D-046: Worker production context is tenant-scoped and database-backed
+
+Status: Approved
+
+Decision:
+
+The worker home flow resolves the authenticated User through an active tenant
+Membership and EmployeeProfile. `WorkerProductionContext` stores at most one
+active ProductionRole per EmployeeProfile and Organization. A role is valid
+only while it is assigned to the employee and active.
+
+A worker with one available ProductionRole may use it automatically. A worker
+with multiple available roles must explicitly select one. If a persisted role
+becomes stale, the server ignores it and revalidates the current assignments.
+Selecting the role requires `scans.perform`; reading personal `IN_PROGRESS`
+Products requires `products.read`. ProductionRole assignment never grants
+authorization.
+
+Reason:
+
+Production work context must survive requests without being confused with
+software permissions, and stale assignments must fail safely at the server
+trust boundary.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:

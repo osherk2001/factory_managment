@@ -80,7 +80,29 @@ ProductionRole describes what production function an employee is performing.
 
 AccessRole and ProductionRole must remain separate.
 
-## 3. Authorization flow
+## 3. Worker production context
+
+The worker server boundary resolves, in order:
+
+```text
+authenticated User
+↓
+active tenant Membership
+↓
+active EmployeeProfile
+↓
+active ProductionRoles assigned to that EmployeeProfile
+↓
+persisted or explicitly selected working context
+```
+
+Reading the worker's personal Product list requires `products.read` and is
+filtered by the trusted tenant and EmployeeProfile. Selecting or changing the
+active ProductionRole requires `scans.perform`; the server checks the current
+assignment and role activity again before writing `WorkerProductionContext`.
+ProductionRole assignment never grants an AccessRole or Permission.
+
+## 4. Authorization flow
 
 For every protected operation:
 

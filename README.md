@@ -127,11 +127,21 @@ Auth.js uses a Credentials provider with globally unique usernames as the MVP lo
 
 Login rate limiting is not implemented yet because the MVP does not include Redis or another shared rate-limit service. It remains a production-readiness requirement.
 
-## Deliberate Phase 5 boundaries
+## Worker production context
 
-This phase includes Product creation only. It does not include barcode scanning
-or printing, later Product lifecycle operations, worker or manager dashboards,
-the workflow business engine, reports, or production execution. The seed still
-establishes users without passwords; local password setup and System Admin
-bootstrap are explicit commands. `SYSTEM_ADMIN` remains a platform-level
-concept and is not seeded as a tenant access role.
+Authenticated workers use `/app/worker`. The route resolves the active tenant
+Membership and EmployeeProfile, shows assigned active ProductionRoles, and
+lists only the worker's tenant-scoped `IN_PROGRESS` Products. A single role is
+effective automatically; multiple roles require an explicit selection that is
+persisted across requests. The development seed keeps worker1 on one role and
+worker2 on multiple roles so both paths can be exercised.
+
+## Deliberate Phase 5 and Phase 6 boundaries
+
+This phase includes Product creation and the worker production context only. It
+does not include barcode scanning or printing, later Product lifecycle
+operations, barcode scan business logic, location inference, the workflow
+business engine, reports, or production execution. The seed still establishes
+users without passwords; local password setup and System Admin bootstrap are
+explicit commands. `SYSTEM_ADMIN` remains a platform-level concept and is not
+seeded as a tenant access role.

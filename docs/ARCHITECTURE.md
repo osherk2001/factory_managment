@@ -82,6 +82,7 @@ src/
     auth/
     organizations/
     authorization/
+    worker-context/
     employees/
     products/
     orders/
@@ -144,6 +145,23 @@ allowed fields. The Product service resolves the trusted tenant through
 `requirePermission("products.create")`, validates references, then atomically
 creates the Product, Barcode, `PRODUCT_CREATED` transition, AuditLog, and
 idempotency result before returning a safe DTO.
+
+Phase 6 adds the worker production-context boundary:
+
+```text
+src/modules/worker-context/
+  employee-context.service.ts       Membership-to-EmployeeProfile resolution
+  production-role-context.service.ts assigned-role validation and persistence
+  worker-products.service.ts         tenant-scoped personal Product DTOs
+  worker-home.service.ts             worker home application data
+  actions.ts                         active ProductionRole server action
+```
+
+`/app/worker` resolves the authenticated tenant, active EmployeeProfile,
+available active ProductionRoles, persisted working context, and personal
+`IN_PROGRESS` Products. Role selection requires `scans.perform`; personal
+Product reads require `products.read`. The worker context module never mutates
+Products, executes workflows, or performs scans.
 
 `proxy.ts` is an optimistic route filter. It must not be the only
 authorization layer. Protected server actions, route handlers, and future

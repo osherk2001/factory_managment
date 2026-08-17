@@ -150,6 +150,8 @@ Implement:
 
 ## Phase 6 — Worker production context
 
+Status: Implemented
+
 Implement:
 
 - worker home screen
@@ -157,6 +159,11 @@ Implement:
 - active ProductionRole selection
 - persistence of selected working context
 - worker personal Product list
+
+The implementation provides `/app/worker`, tenant-scoped worker resolution,
+database-backed `WorkerProductionContext`, Hebrew-default i18n, and automated
+integration/E2E coverage. It does not perform Product mutations, barcode
+scanning, location inference, or workflow execution.
 
 ## Phase 7 — Barcode scanning and responsibility
 

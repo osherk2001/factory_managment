@@ -652,6 +652,25 @@ If the worker is authorized and the Product can otherwise be received:
 
 A worker may be authorized for multiple roles, for example `POLISHER` and `STONE_SETTER`, but only the currently selected active role is used for the current ProductAssignment and transition.
 
+### Worker production context
+
+The authenticated tenant Membership resolves to one active EmployeeProfile
+before the worker home screen is loaded. The worker's selected
+ProductionRole is persisted in `WorkerProductionContext` so it remains
+available across requests and login sessions.
+
+Rules:
+
+- the context is tenant-scoped and unique per EmployeeProfile
+- the selected role must be assigned to that EmployeeProfile and remain active
+- a single available role is effective automatically and need not be persisted
+- multiple available roles require explicit selection before handling work
+- a stale or removed selection is ignored and revalidated against current assignments
+- the context does not grant authorization and does not mutate Product state
+
+The worker home screen reads only Products currently in `IN_PROGRESS` with the
+trusted EmployeeProfile as `currentWorker`.
+
 ## Access roles and production roles
 
 FactoryFlow has two different role concepts.

@@ -50,6 +50,7 @@ Prisma is the initial ORM and migration tool.
 
 - ProductionRole
 - EmployeeProductionRole
+- WorkerProductionContext
 - Department
 - Location
 - WorkflowTemplate
@@ -91,6 +92,8 @@ erDiagram
     Organization ||--o{ ProductionRole : defines
     EmployeeProfile ||--o{ EmployeeProductionRole : can_perform
     ProductionRole ||--o{ EmployeeProductionRole : assigned
+    EmployeeProfile ||--o| WorkerProductionContext : uses
+    ProductionRole ||--o{ WorkerProductionContext : active_role
 
     Organization ||--o{ Department : has
     Department ||--o{ Location : contains
@@ -383,6 +386,33 @@ PRIMARY KEY(employeeId, productionRoleId)
 ```
 
 The server must validate this relationship whenever the worker selects an active ProductionRole.
+
+## WorkerProductionContext
+
+Stores the current production working context for an EmployeeProfile. It is
+not an authorization record and does not grant any Permission.
+
+```text
+id                     UUID PK
+organizationId         UUID FK -> Organization.id
+employeeId             UUID FK -> EmployeeProfile.id
+activeProductionRoleId UUID NULL FK -> ProductionRole.id
+createdAt              TIMESTAMPTZ NOT NULL
+updatedAt              TIMESTAMPTZ NOT NULL
+```
+
+Constraints and indexes:
+
+```text
+UNIQUE(organizationId, employeeId)
+INDEX(organizationId, activeProductionRoleId)
+```
+
+The composite foreign keys require the EmployeeProfile and optional
+ProductionRole to belong to the same Organization. The application must also
+verify that the active role is assigned to that employee and is active before
+persisting or using it. A single available role may be resolved automatically
+without creating a context row; multiple roles require an explicit selection.
 
 ## Department
 

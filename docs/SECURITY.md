@@ -108,6 +108,18 @@ Use:
 
 Do not rely only on application checks for critical invariants.
 
+Worker production context is protected by both database and server checks. The
+database scopes `WorkerProductionContext` to the same Organization as its
+EmployeeProfile and optional ProductionRole. The server revalidates the active
+Membership, EmployeeProfile, role assignment, and role activity on every
+worker request. Personal Product reads use the trusted EmployeeProfile and
+`IN_PROGRESS` status in the tenant-scoped query; browser-supplied worker or
+organization identifiers are not accepted.
+
+Changing the persisted working role requires `scans.perform`. A stale role is
+never used: it is ignored and the worker must use the remaining valid role or
+make a new explicit selection.
+
 ## 9. Scan security
 
 Barcode values must be unique and non-guessable.

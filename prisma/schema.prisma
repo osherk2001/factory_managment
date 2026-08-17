@@ -92,6 +92,7 @@ model Organization {
   idempotencyKeys         IdempotencyKey[]
   membershipAccessRoles   MembershipAccessRole[]
   employeeProductionRoles EmployeeProductionRole[]
+  workerProductionContexts WorkerProductionContext[]
 }
 
 model User {
@@ -207,6 +208,7 @@ model EmployeeProfile {
   productionRoleLinks EmployeeProductionRole[]
   assignments         ProductAssignment[]
   currentProducts     Product[]                @relation("ProductCurrentWorker")
+  workerProductionContext WorkerProductionContext?
   transitionsFrom     ProductTransition[]      @relation("ProductTransitionFromWorkers")
   transitionsTo       ProductTransition[]      @relation("ProductTransitionToWorkers")
   weightEvents        WeightEvent[]
@@ -231,6 +233,7 @@ model ProductionRole {
   workflowSnapshotStages WorkflowSnapshotStage[]
   assignments            ProductAssignment[]
   currentProducts        Product[]                @relation("ProductCurrentRole")
+  workerProductionContexts WorkerProductionContext[]
   transitionsFrom        ProductTransition[]      @relation("ProductTransitionFromRoles")
   transitionsTo          ProductTransition[]      @relation("ProductTransitionToRoles")
   weightEvents           WeightEvent[]
@@ -253,6 +256,22 @@ model EmployeeProductionRole {
   @@id([employeeId, productionRoleId])
   @@index([organizationId])
   @@index([productionRoleId])
+}
+
+model WorkerProductionContext {
+  id                     String   @id @default(uuid()) @db.Uuid
+  organizationId        String   @db.Uuid
+  employeeId            String   @db.Uuid
+  activeProductionRoleId String?  @db.Uuid
+  createdAt              DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(6)
+
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee             EmployeeProfile @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
+  activeProductionRole ProductionRole? @relation(fields: [organizationId, activeProductionRoleId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeId])
+  @@index([organizationId, activeProductionRoleId])
 }
 
 model Department {
