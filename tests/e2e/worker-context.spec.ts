@@ -257,6 +257,10 @@ test.describe.serial("Phase 6 worker production context", () => {
     await login(page, multiUsername);
     await page.goto("/app/worker");
 
+    const roleSelectionHeading = page.getByTestId(
+      "worker-role-selection-heading",
+    );
+    const requiredHeading = await roleSelectionHeading.textContent();
     await expect(page.getByTestId("role-selection-required")).toBeVisible();
     await expect(page.getByTestId("active-production-role")).toHaveCount(0);
 
@@ -266,6 +270,8 @@ test.describe.serial("Phase 6 worker production context", () => {
     await expect(page.getByTestId("active-production-role")).toHaveText(
       `E2E Multi Role One ${suffix}`,
     );
+    await expect(page.getByTestId("role-selection-required")).toHaveCount(0);
+    await expect(roleSelectionHeading).not.toHaveText(requiredHeading ?? "");
 
     await page.reload();
     await expect(page.getByTestId("active-production-role")).toHaveText(

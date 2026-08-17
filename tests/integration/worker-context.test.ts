@@ -32,11 +32,13 @@ let readOnlyUser: { id: string; username: string };
 let noProfileUser: { id: string; username: string };
 let inactiveEmployeeUser: { id: string; username: string };
 let noRoleUser: { id: string; username: string };
+let inactiveMembershipUser: { id: string; username: string };
 let inactiveUser: { id: string; username: string };
 let membershipA: { id: string };
 let readOnlyMembership: { id: string };
 let inactiveEmployeeMembership: { id: string };
 let noRoleMembership: { id: string };
+let inactiveMembership: { id: string };
 let employeeA: { id: string; displayName: string };
 let readOnlyEmployee: { id: string };
 let inactiveEmployee: { id: string };
@@ -96,14 +98,21 @@ describe.sequential("Phase 6 worker production context", () => {
       select: { id: true },
     });
 
-    [fullUser, readOnlyUser, noProfileUser, inactiveEmployeeUser, noRoleUser] =
-      await Promise.all([
-        createUser(`phase6-full-${suffix}`),
-        createUser(`phase6-read-only-${suffix}`),
-        createUser(`phase6-no-profile-${suffix}`),
-        createUser(`phase6-inactive-employee-${suffix}`),
-        createUser(`phase6-no-role-${suffix}`),
-      ]);
+    [
+      fullUser,
+      readOnlyUser,
+      noProfileUser,
+      inactiveEmployeeUser,
+      noRoleUser,
+      inactiveMembershipUser,
+    ] = await Promise.all([
+      createUser(`phase6-full-${suffix}`),
+      createUser(`phase6-read-only-${suffix}`),
+      createUser(`phase6-no-profile-${suffix}`),
+      createUser(`phase6-inactive-employee-${suffix}`),
+      createUser(`phase6-no-role-${suffix}`),
+      createUser(`phase6-inactive-membership-${suffix}`),
+    ]);
     inactiveUser = await createUser(`phase6-inactive-user-${suffix}`, false);
 
     const memberships = await Promise.all(
@@ -113,6 +122,7 @@ describe.sequential("Phase 6 worker production context", () => {
         noProfileUser,
         inactiveEmployeeUser,
         noRoleUser,
+        inactiveMembershipUser,
         inactiveUser,
       ].map((user) =>
         prisma.membership.create({
@@ -131,7 +141,12 @@ describe.sequential("Phase 6 worker production context", () => {
       ,
       inactiveEmployeeMembership,
       noRoleMembership,
+      inactiveMembership,
     ] = memberships;
+    await prisma.membership.update({
+      where: { id: inactiveMembership.id },
+      data: { status: "INACTIVE" },
+    });
 
     [employeeA, readOnlyEmployee, inactiveEmployee] = await Promise.all([
       prisma.employeeProfile.create({
@@ -164,6 +179,14 @@ describe.sequential("Phase 6 worker production context", () => {
           organizationId: organizationA.id,
           membershipId: noRoleMembership.id,
           displayName: `Phase 6 No Role ${suffix}`,
+        },
+        select: { id: true },
+      }),
+      prisma.employeeProfile.create({
+        data: {
+          organizationId: organizationA.id,
+          membershipId: inactiveMembership.id,
+          displayName: `Phase 6 Inactive Membership ${suffix}`,
         },
         select: { id: true },
       }),
@@ -292,6 +315,11 @@ describe.sequential("Phase 6 worker production context", () => {
           membershipId: readOnlyMembership.id,
           accessRoleId: readOnlyAccessRole.id,
         },
+        {
+          organizationId: organizationA.id,
+          membershipId: noRoleMembership.id,
+          accessRoleId: fullAccessRole.id,
+        },
       ],
     });
 
@@ -409,6 +437,11 @@ describe.sequential("Phase 6 worker production context", () => {
       code: "EMPLOYEE_PROFILE_REQUIRED",
     });
 
+    await setMockSession(inactiveMembershipUser);
+    await expect(requireTenantContext()).rejects.toMatchObject({
+      code: "MEMBERSHIP_INACTIVE",
+    });
+
     await setMockSession(inactiveEmployeeUser);
     await expect(
       resolveEmployeeContext(await requireTenantContext()),
@@ -460,6 +493,48 @@ describe.sequential("Phase 6 worker production context", () => {
     });
   });
 
+  it("excludes inactive roles and invalidates a persisted role after deactivation", async () => {
+    await setMockSession(fullUser);
+    await expect(selectActiveProductionRole(roleA3.id)).resolves.toMatchObject({
+      kind: "READY",
+      activeProductionRole: { id: roleA3.id },
+      activeProductionRoleSource: "persisted",
+    });
+
+    try {
+      await prisma.productionRole.update({
+        where: { id: roleA3.id },
+        data: { isActive: false },
+      });
+
+      const employee = await resolveEmployeeContext(
+        await requireTenantContext(),
+      );
+      const availableRoles = await listAvailableProductionRoles(employee);
+      expect(availableRoles.map((role) => role.id)).not.toContain(roleA3.id);
+      await expect(selectActiveProductionRole(roleA3.id)).rejects.toMatchObject(
+        { code: "PRODUCTION_ROLE_NOT_AVAILABLE" },
+      );
+      await expect(
+        resolveWorkerProductionRoleState(employee),
+      ).resolves.toMatchObject({
+        kind: "ACTIVE_PRODUCTION_ROLE_REQUIRED",
+        activeProductionRole: null,
+      });
+    } finally {
+      await prisma.productionRole.update({
+        where: { id: roleA3.id },
+        data: { isActive: true },
+      });
+      await prisma.workerProductionContext.deleteMany({
+        where: {
+          organizationId: organizationA.id,
+          employeeId: employeeA.id,
+        },
+      });
+    }
+  });
+
   it("persists the selected role and revalidates stale assignments", async () => {
     await setMockSession(fullUser);
     await expect(selectActiveProductionRole(roleA2.id)).resolves.toMatchObject({
@@ -501,6 +576,26 @@ describe.sequential("Phase 6 worker production context", () => {
     ).resolves.toMatchObject({
       kind: "ACTIVE_PRODUCTION_ROLE_REQUIRED",
       activeProductionRole: null,
+    });
+  });
+
+  it("rejects cross-tenant ProductionRole selection as unavailable", async () => {
+    await setMockSession(fullUser);
+    await expect(selectActiveProductionRole(roleB.id)).rejects.toMatchObject({
+      code: "PRODUCTION_ROLE_NOT_AVAILABLE",
+    });
+  });
+
+  it("does not derive ProductionRoles from an AccessRole", async () => {
+    await setMockSession(noRoleUser);
+    const data = await getWorkerHomeData();
+    expect(data.productionRoleState).toMatchObject({
+      kind: "NO_PRODUCTION_ROLES",
+      availableRoles: [],
+      activeProductionRole: null,
+    });
+    await expect(selectActiveProductionRole(roleA1.id)).rejects.toMatchObject({
+      code: "PRODUCTION_ROLE_NOT_AVAILABLE",
     });
   });
 

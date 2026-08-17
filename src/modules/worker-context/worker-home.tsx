@@ -117,6 +117,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
   const activeRole = data.productionRoleState.availableRoles.find(
     (role) => role.id === activeRoleId,
   );
+  const roleSelectionRequired = activeRole === undefined || activeRole === null;
   const shouldShowSelection =
     data.productionRoleState.availableRoles.length > 1;
 
@@ -132,12 +133,15 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         </p>
       ) : null}
       <div>
-        <h2 className="text-xl font-semibold">
-          {data.productionRoleState.kind === "ACTIVE_PRODUCTION_ROLE_REQUIRED"
+        <h2
+          className="text-xl font-semibold"
+          data-testid="worker-role-selection-heading"
+        >
+          {roleSelectionRequired
             ? messages.worker.chooseProductionRole
             : messages.worker.changeProductionRole}
         </h2>
-        {data.productionRoleState.kind === "ACTIVE_PRODUCTION_ROLE_REQUIRED" ? (
+        {roleSelectionRequired ? (
           <p
             className="mt-1 text-sm text-muted-foreground"
             data-testid="role-selection-required"
