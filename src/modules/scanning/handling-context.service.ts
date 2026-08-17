@@ -3,8 +3,15 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/client";
-import { requirePermission } from "@/modules/authorization";
-import type { TenantContext } from "@/modules/authorization";
+import {
+  AUTH_ERROR_CODES,
+  FactoryFlowAuthError,
+} from "@/modules/auth/auth-errors";
+import {
+  MEMBERSHIP_STATUS_ACTIVE,
+  requirePermission,
+  type TenantContext,
+} from "@/modules/authorization";
 import { resolveEmployeeContext } from "@/modules/worker-context/employee-context.service";
 import { resolveWorkerProductionRoleState } from "@/modules/worker-context/production-role-context.service";
 import {
@@ -27,6 +34,8 @@ export type ActiveProductionHandlingContext = {
   productionRole: ScanProductionRoleDto;
   handlingLocation: ScanLocationDto;
 };
+
+type HandlingContextDatabase = typeof prisma | Prisma.TransactionClient;
 
 function toHandlingLocationDto(location: {
   id: string;
@@ -52,10 +61,11 @@ function toProductionRoleDto(role: {
 }
 
 async function resolveRoleAndLocation(
+  database: HandlingContextDatabase,
   employee: EmployeeContext,
   productionRoleId: string,
 ) {
-  const link = await prisma.employeeProductionRole.findFirst({
+  const link = await database.employeeProductionRole.findFirst({
     where: {
       organizationId: employee.organizationId,
       employeeId: employee.employeeId,
@@ -117,6 +127,7 @@ export async function resolveActiveProductionHandlingContextForTenant(
   }
 
   const roleAndLocation = await resolveRoleAndLocation(
+    prisma,
     employee,
     roleState.activeProductionRole.id,
   );
@@ -148,47 +159,138 @@ export async function getWorkerScanPageData(): Promise<ActiveProductionHandlingC
   };
 }
 
-export async function revalidateHandlingContext(
-  database: typeof prisma | Prisma.TransactionClient,
-  context: ActiveProductionHandlingContext,
-) {
-  const link = await database.employeeProductionRole.findFirst({
-    where: {
-      organizationId: context.employee.organizationId,
-      employeeId: context.employee.employeeId,
-      productionRoleId: context.productionRole.id,
-      productionRole: { isActive: true },
-    },
-    select: {
-      productionRole: { select: { id: true, code: true, name: true } },
-      handlingLocation: {
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          isActive: true,
-          departmentId: true,
-        },
-      },
-    },
+/**
+ * Resolve the worker context from the transaction's database client.
+ *
+ * The context resolved before a state-changing transaction is useful for
+ * classification and UX, but it is not authoritative for Product mutation.
+ * This resolver deliberately repeats the tenant, employee, effective-role,
+ * and handling-location checks using the transaction client.
+ */
+export async function resolveCurrentProductionHandlingContextInTransaction(
+  database: Prisma.TransactionClient,
+  tenant: TenantContext,
+): Promise<ActiveProductionHandlingContext> {
+  const user = await database.user.findUnique({
+    where: { id: tenant.userId },
+    select: { id: true, isActive: true },
   });
 
-  if (!link) {
+  if (!user) {
+    throw new FactoryFlowAuthError(AUTH_ERROR_CODES.UNAUTHENTICATED);
+  }
+
+  if (!user.isActive) {
+    throw new FactoryFlowAuthError(AUTH_ERROR_CODES.USER_INACTIVE);
+  }
+
+  const membership = await database.membership.findFirst({
+    where: {
+      id: tenant.membershipId,
+      organizationId: tenant.organizationId,
+      userId: tenant.userId,
+      status: MEMBERSHIP_STATUS_ACTIVE,
+    },
+    select: { id: true },
+  });
+
+  if (!membership) {
+    throw new FactoryFlowAuthError(AUTH_ERROR_CODES.MEMBERSHIP_INACTIVE);
+  }
+
+  const employeeRecord = await database.employeeProfile.findUnique({
+    where: {
+      organizationId_membershipId: {
+        organizationId: tenant.organizationId,
+        membershipId: tenant.membershipId,
+      },
+    },
+    select: { id: true, displayName: true, isActive: true },
+  });
+
+  if (!employeeRecord) {
     throw new WorkerContextError(
-      WORKER_CONTEXT_ERROR_CODES.PRODUCTION_ROLE_NOT_AVAILABLE,
+      WORKER_CONTEXT_ERROR_CODES.EMPLOYEE_PROFILE_REQUIRED,
     );
   }
 
-  if (!link.handlingLocation) {
-    throw new WorkerScanError(SCAN_ERROR_CODES.WORK_LOCATION_REQUIRED);
+  if (!employeeRecord.isActive) {
+    throw new WorkerContextError(WORKER_CONTEXT_ERROR_CODES.EMPLOYEE_INACTIVE);
   }
 
-  if (!link.handlingLocation.isActive) {
-    throw new WorkerScanError(SCAN_ERROR_CODES.WORK_LOCATION_INACTIVE);
+  const employee: EmployeeContext = {
+    userId: tenant.userId,
+    membershipId: tenant.membershipId,
+    organizationId: tenant.organizationId,
+    organizationName: tenant.organizationName,
+    employeeId: employeeRecord.id,
+    displayName: employeeRecord.displayName,
+  };
+
+  const [roleLinks, persistedContext] = await Promise.all([
+    database.employeeProductionRole.findMany({
+      where: {
+        organizationId: tenant.organizationId,
+        employeeId: employeeRecord.id,
+        productionRole: { isActive: true },
+      },
+      select: {
+        productionRole: {
+          select: { id: true, code: true, name: true },
+        },
+        handlingLocation: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            isActive: true,
+            departmentId: true,
+          },
+        },
+      },
+      orderBy: { productionRole: { code: "asc" } },
+    }),
+    database.workerProductionContext.findUnique({
+      where: {
+        organizationId_employeeId: {
+          organizationId: tenant.organizationId,
+          employeeId: employeeRecord.id,
+        },
+      },
+      select: { activeProductionRoleId: true },
+    }),
+  ]);
+
+  if (roleLinks.length === 0) {
+    throw new WorkerContextError(
+      WORKER_CONTEXT_ERROR_CODES.NO_PRODUCTION_ROLES,
+    );
   }
+
+  const persistedRoleLink = persistedContext?.activeProductionRoleId
+    ? roleLinks.find(
+        (link) =>
+          link.productionRole.id === persistedContext.activeProductionRoleId,
+      )
+    : undefined;
+  const effectiveRoleLink =
+    persistedRoleLink ?? (roleLinks.length === 1 ? roleLinks[0] : undefined);
+
+  if (!effectiveRoleLink) {
+    throw new WorkerContextError(
+      WORKER_CONTEXT_ERROR_CODES.ACTIVE_PRODUCTION_ROLE_REQUIRED,
+    );
+  }
+
+  const roleAndLocation = await resolveRoleAndLocation(
+    database,
+    employee,
+    effectiveRoleLink.productionRole.id,
+  );
 
   return {
-    productionRole: toProductionRoleDto(link.productionRole),
-    handlingLocation: toHandlingLocationDto(link.handlingLocation),
+    tenant,
+    employee,
+    ...roleAndLocation,
   };
 }

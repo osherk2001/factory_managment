@@ -10,7 +10,7 @@ import { requirePermission, type TenantContext } from "@/modules/authorization";
 
 import {
   resolveActiveProductionHandlingContextForTenant,
-  revalidateHandlingContext,
+  resolveCurrentProductionHandlingContextInTransaction,
   type ActiveProductionHandlingContext,
 } from "./handling-context.service";
 import {
@@ -275,13 +275,11 @@ function productStateChangedError(): WorkerScanError {
   return new WorkerScanError(SCAN_ERROR_CODES.SCAN_CONFLICT);
 }
 
-async function revalidateHandlingContextInTransaction(
-  database: ScanDatabase,
-  context: ActiveProductionHandlingContext,
-) {
-  // The helper is also used outside transactions. Keeping the same query shape
-  // makes the trusted role/location pair explicit at both boundaries.
-  return revalidateHandlingContext(database, context);
+function isSerializationConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2034"
+  );
 }
 
 async function receiveProductTransaction(
@@ -292,135 +290,140 @@ async function receiveProductTransaction(
   idempotencyKey: string,
   requestHash: string,
 ): Promise<WorkerScanResult> {
-  return prisma.$transaction(async (database) => {
-    await database.idempotencyKey.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        userId: context.tenant.userId,
-        actorMembershipId: context.tenant.membershipId,
-        key: idempotencyKey,
-        operation: RECEIVE_OPERATION,
-        requestHash,
-      },
-    });
+  return prisma.$transaction(
+    async (database) => {
+      const currentContext =
+        await resolveCurrentProductionHandlingContextInTransaction(
+          database,
+          context.tenant,
+        );
 
-    const product = await findProductByBarcode(
-      database,
-      context.tenant.organizationId,
-      barcode,
-    );
+      await database.idempotencyKey.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          userId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          key: idempotencyKey,
+          operation: RECEIVE_OPERATION,
+          requestHash,
+        },
+      });
 
-    if (!product) {
-      throw new WorkerScanError(SCAN_ERROR_CODES.BARCODE_NOT_FOUND);
-    }
+      const product = await findProductByBarcode(
+        database,
+        currentContext.tenant.organizationId,
+        barcode,
+      );
 
-    const expectedLocationId =
-      expectedStatus === ProductStatus.CREATED ? null : undefined;
-    if (
-      product.status !== expectedStatus ||
-      product.version !== expectedVersion ||
-      product.currentWorkerId !== null ||
-      product.currentRoleId !== null ||
-      (expectedLocationId === null && product.currentLocationId !== null)
-    ) {
-      throw productStateChangedError();
-    }
+      if (!product) {
+        throw new WorkerScanError(SCAN_ERROR_CODES.BARCODE_NOT_FOUND);
+      }
 
-    const activeAssignment = await database.productAssignment.findFirst({
-      where: {
-        organizationId: context.tenant.organizationId,
-        productId: product.id,
-        endedAt: null,
-      },
-      select: { id: true },
-    });
-    if (activeAssignment) {
-      throw productStateChangedError();
-    }
+      const expectedLocationId =
+        expectedStatus === ProductStatus.CREATED ? null : undefined;
+      if (
+        product.status !== expectedStatus ||
+        product.version !== expectedVersion ||
+        product.currentWorkerId !== null ||
+        product.currentRoleId !== null ||
+        (expectedLocationId === null && product.currentLocationId !== null)
+      ) {
+        throw productStateChangedError();
+      }
 
-    const currentContext = await revalidateHandlingContextInTransaction(
-      database,
-      context,
-    );
-    const occurredAt = new Date();
-    const updated = await database.product.updateMany({
-      where: {
-        id: product.id,
-        organizationId: context.tenant.organizationId,
-        status: expectedStatus,
-        version: expectedVersion,
-        currentWorkerId: null,
-        currentRoleId: null,
-        ...(expectedLocationId === null ? { currentLocationId: null } : {}),
-      },
-      data: {
-        status: ProductStatus.IN_PROGRESS,
-        currentWorkerId: context.employee.employeeId,
-        currentRoleId: currentContext.productionRole.id,
-        currentLocationId: currentContext.handlingLocation.id,
-        version: { increment: 1 },
-      },
-    });
+      const activeAssignment = await database.productAssignment.findFirst({
+        where: {
+          organizationId: currentContext.tenant.organizationId,
+          productId: product.id,
+          endedAt: null,
+        },
+        select: { id: true },
+      });
+      if (activeAssignment) {
+        throw productStateChangedError();
+      }
 
-    if (updated.count !== 1) {
-      throw productStateChangedError();
-    }
+      const occurredAt = new Date();
+      const updated = await database.product.updateMany({
+        where: {
+          id: product.id,
+          organizationId: currentContext.tenant.organizationId,
+          status: expectedStatus,
+          version: expectedVersion,
+          currentWorkerId: null,
+          currentRoleId: null,
+          ...(expectedLocationId === null ? { currentLocationId: null } : {}),
+        },
+        data: {
+          status: ProductStatus.IN_PROGRESS,
+          currentWorkerId: currentContext.employee.employeeId,
+          currentRoleId: currentContext.productionRole.id,
+          currentLocationId: currentContext.handlingLocation.id,
+          version: { increment: 1 },
+        },
+      });
 
-    await database.productAssignment.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        productId: product.id,
-        employeeId: context.employee.employeeId,
-        productionRoleId: currentContext.productionRole.id,
-        locationId: currentContext.handlingLocation.id,
-        workflowStageId: null,
-        startedAt: occurredAt,
-      },
-    });
+      if (updated.count !== 1) {
+        throw productStateChangedError();
+      }
 
-    await database.productTransition.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        productId: product.id,
-        actorUserId: context.tenant.userId,
-        actorMembershipId: context.tenant.membershipId,
-        eventType: "PRODUCT_RECEIVED",
-        fromStatus: expectedStatus,
-        toStatus: ProductStatus.IN_PROGRESS,
-        fromWorkerId: product.currentWorkerId,
-        toWorkerId: context.employee.employeeId,
-        fromRoleId: product.currentRoleId,
-        toRoleId: currentContext.productionRole.id,
-        fromLocationId: product.currentLocationId,
-        toLocationId: currentContext.handlingLocation.id,
-        fromStageId: product.currentStageId,
-        toStageId: product.currentStageId,
-        occurredAt,
-      },
-    });
+      await database.productAssignment.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          productId: product.id,
+          employeeId: currentContext.employee.employeeId,
+          productionRoleId: currentContext.productionRole.id,
+          locationId: currentContext.handlingLocation.id,
+          workflowStageId: null,
+          startedAt: occurredAt,
+        },
+      });
 
-    const resultProduct = await findProductByBarcode(
-      database,
-      context.tenant.organizationId,
-      barcode,
-    );
-    if (!resultProduct) {
-      throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
-    }
+      await database.productTransition.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          productId: product.id,
+          actorUserId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          eventType: "PRODUCT_RECEIVED",
+          fromStatus: expectedStatus,
+          toStatus: ProductStatus.IN_PROGRESS,
+          fromWorkerId: product.currentWorkerId,
+          toWorkerId: currentContext.employee.employeeId,
+          fromRoleId: product.currentRoleId,
+          toRoleId: currentContext.productionRole.id,
+          fromLocationId: product.currentLocationId,
+          toLocationId: currentContext.handlingLocation.id,
+          fromStageId: product.currentStageId,
+          toStageId: product.currentStageId,
+          occurredAt,
+        },
+      });
 
-    const result = toScanResult(resultProduct, "RECEIVED", barcode);
-    await database.idempotencyKey.updateMany({
-      where: {
-        organizationId: context.tenant.organizationId,
-        userId: context.tenant.userId,
-        key: idempotencyKey,
-        operation: RECEIVE_OPERATION,
-      },
-      data: { resultReference: product.id, resultData: result },
-    });
+      const resultProduct = await findProductByBarcode(
+        database,
+        currentContext.tenant.organizationId,
+        barcode,
+      );
+      if (!resultProduct) {
+        throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
+      }
 
-    return result;
-  });
+      const result = toScanResult(resultProduct, "RECEIVED", barcode);
+      await database.idempotencyKey.updateMany({
+        where: {
+          organizationId: currentContext.tenant.organizationId,
+          userId: currentContext.tenant.userId,
+          key: idempotencyKey,
+          operation: RECEIVE_OPERATION,
+        },
+        data: { resultReference: product.id, resultData: result },
+      });
+
+      return result;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 async function receiveProduct(
@@ -457,6 +460,10 @@ async function receiveProduct(
       if (replay) {
         return replay;
       }
+    }
+
+    if (isSerializationConflict(error)) {
+      throw productStateChangedError();
     }
 
     throw error;
@@ -539,172 +546,181 @@ async function takeOverProductTransaction(
   idempotencyKey: string,
   requestHash: string,
 ): Promise<WorkerScanResult> {
-  return prisma.$transaction(async (database) => {
-    await database.idempotencyKey.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        userId: context.tenant.userId,
-        actorMembershipId: context.tenant.membershipId,
-        key: idempotencyKey,
-        operation: TAKEOVER_OPERATION,
-        requestHash,
-      },
-    });
+  return prisma.$transaction(
+    async (database) => {
+      const currentContext =
+        await resolveCurrentProductionHandlingContextInTransaction(
+          database,
+          context.tenant,
+        );
 
-    const product = await findProductByBarcode(
-      database,
-      context.tenant.organizationId,
-      barcode,
-    );
-    if (!product) {
-      throw new WorkerScanError(SCAN_ERROR_CODES.BARCODE_NOT_FOUND);
-    }
-
-    if (
-      product.status !== ProductStatus.IN_PROGRESS ||
-      !product.currentWorkerId ||
-      product.currentWorkerId === context.employee.employeeId ||
-      product.version !== expectedVersion
-    ) {
-      throw new WorkerScanError(SCAN_ERROR_CODES.TAKEOVER_NOT_ALLOWED);
-    }
-
-    const activeAssignment = await database.productAssignment.findFirst({
-      where: {
-        organizationId: context.tenant.organizationId,
-        productId: product.id,
-        endedAt: null,
-      },
-      select: {
-        id: true,
-        employeeId: true,
-        productionRoleId: true,
-        locationId: true,
-        workflowStageId: true,
-      },
-    });
-    if (
-      !activeAssignment ||
-      activeAssignment.employeeId !== product.currentWorkerId
-    ) {
-      throw productStateChangedError();
-    }
-
-    const currentContext = await revalidateHandlingContextInTransaction(
-      database,
-      context,
-    );
-    const occurredAt = new Date();
-    const updated = await database.product.updateMany({
-      where: {
-        id: product.id,
-        organizationId: context.tenant.organizationId,
-        status: ProductStatus.IN_PROGRESS,
-        version: expectedVersion,
-        currentWorkerId: product.currentWorkerId,
-      },
-      data: {
-        currentWorkerId: context.employee.employeeId,
-        currentRoleId: currentContext.productionRole.id,
-        currentLocationId: currentContext.handlingLocation.id,
-        version: { increment: 1 },
-      },
-    });
-    if (updated.count !== 1) {
-      throw productStateChangedError();
-    }
-
-    const ended = await database.productAssignment.updateMany({
-      where: { id: activeAssignment.id, endedAt: null },
-      data: { endedAt: occurredAt, endReason: "TAKEN_OVER" },
-    });
-    if (ended.count !== 1) {
-      throw productStateChangedError();
-    }
-
-    await database.productAssignment.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        productId: product.id,
-        employeeId: context.employee.employeeId,
-        productionRoleId: currentContext.productionRole.id,
-        locationId: currentContext.handlingLocation.id,
-        workflowStageId: null,
-        startedAt: occurredAt,
-      },
-    });
-
-    await database.productTransition.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        productId: product.id,
-        actorUserId: context.tenant.userId,
-        actorMembershipId: context.tenant.membershipId,
-        eventType: "RESPONSIBILITY_TAKEN_OVER",
-        fromStatus: ProductStatus.IN_PROGRESS,
-        toStatus: ProductStatus.IN_PROGRESS,
-        fromWorkerId: product.currentWorkerId,
-        toWorkerId: context.employee.employeeId,
-        fromRoleId: product.currentRoleId,
-        toRoleId: currentContext.productionRole.id,
-        fromLocationId: product.currentLocationId,
-        toLocationId: currentContext.handlingLocation.id,
-        fromStageId: product.currentStageId,
-        toStageId: product.currentStageId,
-        reason: "Explicit worker takeover",
-        occurredAt,
-      },
-    });
-
-    await database.auditLog.create({
-      data: {
-        organizationId: context.tenant.organizationId,
-        actorUserId: context.tenant.userId,
-        actorMembershipId: context.tenant.membershipId,
-        action: "product.responsibility_taken_over",
-        targetType: "Product",
-        targetId: product.id,
-        beforeData: {
-          serialNumber: product.serialNumber,
-          status: product.status,
-          version: product.version,
-          workerId: product.currentWorkerId,
-          roleId: product.currentRoleId,
-          locationId: product.currentLocationId,
+      await database.idempotencyKey.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          userId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          key: idempotencyKey,
+          operation: TAKEOVER_OPERATION,
+          requestHash,
         },
-        afterData: {
-          serialNumber: product.serialNumber,
+      });
+
+      const product = await findProductByBarcode(
+        database,
+        currentContext.tenant.organizationId,
+        barcode,
+      );
+      if (!product) {
+        throw new WorkerScanError(SCAN_ERROR_CODES.BARCODE_NOT_FOUND);
+      }
+
+      if (
+        product.status !== ProductStatus.IN_PROGRESS ||
+        !product.currentWorkerId ||
+        product.currentWorkerId === currentContext.employee.employeeId
+      ) {
+        throw new WorkerScanError(SCAN_ERROR_CODES.TAKEOVER_NOT_ALLOWED);
+      }
+
+      if (product.version !== expectedVersion) {
+        throw productStateChangedError();
+      }
+
+      const activeAssignment = await database.productAssignment.findFirst({
+        where: {
+          organizationId: currentContext.tenant.organizationId,
+          productId: product.id,
+          endedAt: null,
+        },
+        select: {
+          id: true,
+          employeeId: true,
+          productionRoleId: true,
+          locationId: true,
+          workflowStageId: true,
+        },
+      });
+      if (!activeAssignment) {
+        throw new WorkerScanError(SCAN_ERROR_CODES.TAKEOVER_NOT_ALLOWED);
+      }
+
+      if (activeAssignment.employeeId !== product.currentWorkerId) {
+        throw productStateChangedError();
+      }
+
+      const occurredAt = new Date();
+      const updated = await database.product.updateMany({
+        where: {
+          id: product.id,
+          organizationId: currentContext.tenant.organizationId,
           status: ProductStatus.IN_PROGRESS,
-          version: product.version + 1,
-          workerId: context.employee.employeeId,
-          roleId: currentContext.productionRole.id,
-          locationId: currentContext.handlingLocation.id,
+          version: expectedVersion,
+          currentWorkerId: product.currentWorkerId,
         },
-      },
-    });
+        data: {
+          currentWorkerId: currentContext.employee.employeeId,
+          currentRoleId: currentContext.productionRole.id,
+          currentLocationId: currentContext.handlingLocation.id,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count !== 1) {
+        throw productStateChangedError();
+      }
 
-    const resultProduct = await findProductByBarcode(
-      database,
-      context.tenant.organizationId,
-      barcode,
-    );
-    if (!resultProduct) {
-      throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
-    }
+      const ended = await database.productAssignment.updateMany({
+        where: { id: activeAssignment.id, endedAt: null },
+        data: { endedAt: occurredAt, endReason: "TAKEN_OVER" },
+      });
+      if (ended.count !== 1) {
+        throw productStateChangedError();
+      }
 
-    const result = toScanResult(resultProduct, "RECEIVED", barcode);
-    await database.idempotencyKey.updateMany({
-      where: {
-        organizationId: context.tenant.organizationId,
-        userId: context.tenant.userId,
-        key: idempotencyKey,
-        operation: TAKEOVER_OPERATION,
-      },
-      data: { resultReference: product.id, resultData: result },
-    });
+      await database.productAssignment.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          productId: product.id,
+          employeeId: currentContext.employee.employeeId,
+          productionRoleId: currentContext.productionRole.id,
+          locationId: currentContext.handlingLocation.id,
+          workflowStageId: null,
+          startedAt: occurredAt,
+        },
+      });
 
-    return result;
-  });
+      await database.productTransition.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          productId: product.id,
+          actorUserId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          eventType: "RESPONSIBILITY_TAKEN_OVER",
+          fromStatus: ProductStatus.IN_PROGRESS,
+          toStatus: ProductStatus.IN_PROGRESS,
+          fromWorkerId: product.currentWorkerId,
+          toWorkerId: currentContext.employee.employeeId,
+          fromRoleId: product.currentRoleId,
+          toRoleId: currentContext.productionRole.id,
+          fromLocationId: product.currentLocationId,
+          toLocationId: currentContext.handlingLocation.id,
+          fromStageId: product.currentStageId,
+          toStageId: product.currentStageId,
+          reason: "Explicit worker takeover",
+          occurredAt,
+        },
+      });
+
+      await database.auditLog.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          actorUserId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          action: "product.responsibility_taken_over",
+          targetType: "Product",
+          targetId: product.id,
+          beforeData: {
+            serialNumber: product.serialNumber,
+            status: product.status,
+            version: product.version,
+            workerId: product.currentWorkerId,
+            roleId: product.currentRoleId,
+            locationId: product.currentLocationId,
+          },
+          afterData: {
+            serialNumber: product.serialNumber,
+            status: ProductStatus.IN_PROGRESS,
+            version: product.version + 1,
+            workerId: currentContext.employee.employeeId,
+            roleId: currentContext.productionRole.id,
+            locationId: currentContext.handlingLocation.id,
+          },
+        },
+      });
+
+      const resultProduct = await findProductByBarcode(
+        database,
+        currentContext.tenant.organizationId,
+        barcode,
+      );
+      if (!resultProduct) {
+        throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
+      }
+
+      const result = toScanResult(resultProduct, "RECEIVED", barcode);
+      await database.idempotencyKey.updateMany({
+        where: {
+          organizationId: currentContext.tenant.organizationId,
+          userId: currentContext.tenant.userId,
+          key: idempotencyKey,
+          operation: TAKEOVER_OPERATION,
+        },
+        data: { resultReference: product.id, resultData: result },
+      });
+
+      return result;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 export async function takeOverProduct(
@@ -747,6 +763,20 @@ export async function takeOverProduct(
       if (idempotentReplay) {
         return idempotentReplay;
       }
+    }
+
+    if (isSerializationConflict(error)) {
+      const idempotentReplay = await findScanReplay(
+        tenant,
+        parsed.idempotencyKey,
+        TAKEOVER_OPERATION,
+        requestHash,
+      );
+      if (idempotentReplay) {
+        return idempotentReplay;
+      }
+
+      throw productStateChangedError();
     }
 
     throw error;

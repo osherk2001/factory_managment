@@ -10,6 +10,7 @@ vi.mock("../../src/auth", () => ({ auth: vi.fn() }));
 
 import { auth } from "../../src/auth";
 import { prisma } from "../../src/lib/db/client";
+import * as handlingContextService from "../../src/modules/scanning/handling-context.service";
 import { isFactoryFlowAuthError } from "../../src/modules/auth/auth-errors";
 import {
   listAvailableProductionRoles,
@@ -18,6 +19,7 @@ import {
   selectActiveProductionRole,
 } from "../../src/modules/worker-context/server";
 import {
+  resolveActiveProductionHandlingContextForTenant,
   scanProduct,
   takeOverProduct,
 } from "../../src/modules/scanning/server";
@@ -519,6 +521,64 @@ describe.sequential("Phase 7 barcode scanning and responsibility", () => {
     ).resolves.toBe(1);
   });
 
+  it("allows only one concurrent READY_FOR_HANDOFF receive", async () => {
+    const product = await createProduct("concurrent-ready", {
+      status: ProductStatus.READY_FOR_HANDOFF,
+      currentLocationId: locationA.id,
+    });
+    let sessionIndex = 0;
+    const sessions = [sessionFor(workerA), sessionFor(workerB)];
+    authMock.mockImplementation(
+      async () => sessions[sessionIndex++] ?? sessions[0] ?? null,
+    );
+
+    const results = await Promise.allSettled([
+      scanProduct({ barcode: product.barcode, idempotencyKey: randomUUID() }),
+      scanProduct({ barcode: product.barcode, idempotencyKey: randomUUID() }),
+    ]);
+    const successes = results.filter((result) => result.status === "fulfilled");
+    const failures = results.filter((result) => result.status === "rejected");
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(
+      failures[0]?.status === "rejected" &&
+        (failures[0].reason as { code?: string }).code,
+    ).toBe(SCAN_ERROR_CODES.SCAN_CONFLICT);
+
+    const persisted = await prisma.product.findUniqueOrThrow({
+      where: { id: product.id },
+      select: {
+        status: true,
+        version: true,
+        currentWorkerId: true,
+        currentRoleId: true,
+        currentLocationId: true,
+      },
+    });
+    expect(persisted).toMatchObject({
+      status: ProductStatus.IN_PROGRESS,
+      version: 1,
+      currentLocationId: expect.any(String),
+    });
+    expect([workerA.employee.id, workerB.employee.id]).toContain(
+      persisted.currentWorkerId,
+    );
+    expect(persisted.currentRoleId).toBe(roleA.id);
+    await expect(
+      prisma.productAssignment.count({ where: { productId: product.id } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.productAssignment.count({
+        where: { productId: product.id, endedAt: null },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.productTransition.count({
+        where: { productId: product.id, eventType: "PRODUCT_RECEIVED" },
+      }),
+    ).resolves.toBe(1);
+  });
+
   it("does not expose unknown or cross-tenant barcodes and blocks terminal products", async () => {
     setWorkerSession(workerA);
     await expectScanError(
@@ -842,7 +902,7 @@ describe.sequential("Phase 7 barcode scanning and responsibility", () => {
         expectedVersion: 5,
         idempotencyKey: randomUUID(),
       }),
-    ).rejects.toMatchObject({ code: SCAN_ERROR_CODES.TAKEOVER_NOT_ALLOWED });
+    ).rejects.toMatchObject({ code: SCAN_ERROR_CODES.SCAN_CONFLICT });
 
     const foreign = await createProduct("foreign-takeover", {
       organizationId: organizationB.id,
@@ -856,6 +916,205 @@ describe.sequential("Phase 7 barcode scanning and responsibility", () => {
         idempotencyKey: randomUUID(),
       }),
     ).rejects.toMatchObject({ code: SCAN_ERROR_CODES.BARCODE_NOT_FOUND });
+  });
+
+  it("allows only one concurrent takeover of a responsibility", async () => {
+    const workerC = await createWorker("takeover-c");
+    await prisma.employeeProductionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        employeeId: workerC.employee.id,
+        productionRoleId: roleA.id,
+        handlingLocationId: locationB.id,
+      },
+    });
+
+    const product = await createProduct("concurrent-takeover", {
+      status: ProductStatus.IN_PROGRESS,
+      currentWorkerId: workerA.employee.id,
+      currentRoleId: roleA.id,
+      currentLocationId: locationA.id,
+      version: 12,
+    });
+    await createActiveAssignment(product.id, workerA, locationA.id);
+
+    let sessionIndex = 0;
+    const sessions = [
+      sessionFor(workerB),
+      sessionFor(workerB),
+      sessionFor(workerC),
+      sessionFor(workerC),
+    ];
+    authMock.mockImplementation(
+      async () => sessions[sessionIndex++] ?? sessions[0] ?? null,
+    );
+
+    const results = await Promise.allSettled([
+      takeOverProduct({
+        barcode: product.barcode,
+        expectedVersion: 12,
+        idempotencyKey: randomUUID(),
+      }),
+      takeOverProduct({
+        barcode: product.barcode,
+        expectedVersion: 12,
+        idempotencyKey: randomUUID(),
+      }),
+    ]);
+    const successes = results.filter((result) => result.status === "fulfilled");
+    const failures = results.filter((result) => result.status === "rejected");
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(
+      failures[0]?.status === "rejected" &&
+        (failures[0].reason as { code?: string }).code,
+    ).toBe(SCAN_ERROR_CODES.SCAN_CONFLICT);
+
+    const persisted = await prisma.product.findUniqueOrThrow({
+      where: { id: product.id },
+      select: { version: true, currentWorkerId: true, currentRoleId: true },
+    });
+    expect(persisted.version).toBe(13);
+    expect([workerB.employee.id, workerC.employee.id]).toContain(
+      persisted.currentWorkerId,
+    );
+    expect(persisted.currentRoleId).toBe(roleA.id);
+    await expect(
+      prisma.productAssignment.count({ where: { productId: product.id } }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.productAssignment.count({
+        where: { productId: product.id, endedAt: null },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.productAssignment.count({
+        where: {
+          productId: product.id,
+          employeeId: workerA.employee.id,
+          endedAt: { not: null },
+          endReason: "TAKEN_OVER",
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.productTransition.count({
+        where: {
+          productId: product.id,
+          eventType: "RESPONSIBILITY_TAKEN_OVER",
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.auditLog.count({
+        where: {
+          targetId: product.id,
+          action: "product.responsibility_taken_over",
+        },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("uses the current effective role when persisted role context changes", async () => {
+    const secondRole = await prisma.productionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        code: `PHASE7-ROLE-RACE-${suffix}`,
+        name: "Phase 7 Role Race",
+      },
+      select: { id: true },
+    });
+    await prisma.employeeProductionRole.create({
+      data: {
+        organizationId: organizationA.id,
+        employeeId: workerA.employee.id,
+        productionRoleId: secondRole.id,
+        handlingLocationId: locationA2.id,
+      },
+    });
+
+    setWorkerSession(workerA);
+    await expect(selectActiveProductionRole(roleA.id)).resolves.toMatchObject({
+      activeProductionRole: { id: roleA.id },
+    });
+    const tenant = {
+      userId: workerA.user.id,
+      membershipId: workerA.membership.id,
+      organizationId: organizationA.id,
+      organizationName: "Phase 7 Factory A",
+      organizationSlug: "phase7-a",
+    };
+    await expect(
+      resolveActiveProductionHandlingContextForTenant(tenant),
+    ).resolves.toMatchObject({
+      productionRole: { id: roleA.id },
+      handlingLocation: { id: locationA.id },
+    });
+
+    await expect(selectActiveProductionRole(roleA.id)).resolves.toMatchObject({
+      activeProductionRole: { id: roleA.id },
+    });
+
+    const product = await createProduct("active-role-race");
+    const originalResolver =
+      handlingContextService.resolveActiveProductionHandlingContextForTenant;
+    let roleChangedAfterPreTransactionResolution = false;
+    const resolverSpy = vi
+      .spyOn(
+        handlingContextService,
+        "resolveActiveProductionHandlingContextForTenant",
+      )
+      .mockImplementation(async (currentTenant) => {
+        const preTransactionContext = await originalResolver(currentTenant);
+        if (!roleChangedAfterPreTransactionResolution) {
+          roleChangedAfterPreTransactionResolution = true;
+          await prisma.workerProductionContext.update({
+            where: {
+              organizationId_employeeId: {
+                organizationId: organizationA.id,
+                employeeId: workerA.employee.id,
+              },
+            },
+            data: { activeProductionRoleId: secondRole.id },
+          });
+        }
+        return preTransactionContext;
+      });
+
+    let result: Awaited<ReturnType<typeof scanProduct>> | undefined;
+    try {
+      result = await scanProduct({
+        barcode: product.barcode,
+        idempotencyKey: randomUUID(),
+      });
+    } finally {
+      resolverSpy.mockRestore();
+    }
+
+    expect(roleChangedAfterPreTransactionResolution).toBe(true);
+    expect(result).toMatchObject({
+      currentWorker: { id: workerA.employee.id },
+      currentRole: { id: secondRole.id },
+      currentLocation: { id: locationA2.id },
+    });
+    await expect(
+      prisma.productAssignment.findFirstOrThrow({
+        where: { productId: product.id, endedAt: null },
+        select: { productionRoleId: true, locationId: true },
+      }),
+    ).resolves.toEqual({
+      productionRoleId: secondRole.id,
+      locationId: locationA2.id,
+    });
+    await expect(
+      prisma.productTransition.findFirstOrThrow({
+        where: { productId: product.id },
+        select: { toRoleId: true, toLocationId: true },
+      }),
+    ).resolves.toEqual({
+      toRoleId: secondRole.id,
+      toLocationId: locationA2.id,
+    });
   });
 
   it("allows only one concurrent receive and preserves the one-active-assignment invariant", async () => {

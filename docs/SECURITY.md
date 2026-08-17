@@ -177,7 +177,10 @@ actor, store a validated safe result snapshot, and use Product `version` as a
 compare-and-set predicate. The existing PostgreSQL partial unique index on
 active ProductAssignments remains a second integrity defense. Same-worker
 confirmation and completed-product department classification do not mutate
-state in Phase 7.
+state in Phase 7. State-changing scans re-resolve the effective active
+ProductionRole and role-specific handling Location inside the transaction; the
+pre-transaction worker context is not trusted for Product mutation. A stale
+takeover version is reported as `SCAN_CONFLICT` so the worker can scan again.
 
 ## 11. Rate limiting
 

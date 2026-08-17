@@ -197,7 +197,15 @@ The database must enforce that a Product cannot have two active assignments.
 
 Receive and takeover use the Product `version` as a compare-and-set token,
 reserve a tenant/user-scoped idempotency key inside the transaction, and
-revalidate the active role and handling Location inside that transaction.
+re-resolve the worker's effective active ProductionRole and its handling
+Location inside the state-changing transaction. The pre-transaction worker
+context is not authoritative for Product mutation. State-changing scan
+transactions use serializable isolation so a concurrent active-role change is
+not silently paired with a stale Product mutation.
+
+A takeover confirmation with a stale Product version returns `SCAN_CONFLICT`,
+because the Product state changed after the warning was shown. Genuine domain
+invalid takeover states continue to return `TAKEOVER_NOT_ALLOWED`.
 
 ## 12. Client behavior
 
