@@ -19,4 +19,5 @@ export type {
   ProductLifecycleRoleDto,
   ProductLifecycleStatus,
   ProductLifecycleWorkerDto,
+  ReturnProductToProcessInput,
 } from "./product-lifecycle-types";

@@ -183,6 +183,35 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
           </dt>
           <dd>{product.currentLocation?.name ?? messages.worker.notSet}</dd>
         </div>
+        {product.workflow ? (
+          <>
+            <div>
+              <dt className="font-medium text-muted-foreground">
+                {messages.worker.currentWorkflowStage}
+              </dt>
+              <dd data-testid="worker-current-stage">
+                {product.workflow.currentStage?.name ?? messages.worker.notSet}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted-foreground">
+                {messages.worker.expectedWorkflowStage}
+              </dt>
+              <dd data-testid="worker-expected-stage">
+                {product.workflow.expectedNextStage?.name ??
+                  messages.worker.notSet}
+              </dd>
+            </div>
+            {product.workflow.deviation ? (
+              <div data-testid="worker-workflow-deviation">
+                <dt className="font-medium text-muted-foreground">
+                  {messages.worker.workflowDeviation}
+                </dt>
+                <dd>{messages.worker.yes}</dd>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </dl>
 
       <FinishProductForm product={product} />

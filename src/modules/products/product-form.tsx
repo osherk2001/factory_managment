@@ -20,6 +20,7 @@ type ProductCreationFormProps = {
   initialIdempotencyKey: string;
   orders: readonly ProductOption[];
   productTypes: readonly ProductOption[];
+  workflows: readonly ProductOption[];
 };
 
 const messages = getMessages(defaultLocale);
@@ -28,6 +29,7 @@ export function ProductCreationForm({
   initialIdempotencyKey,
   orders,
   productTypes,
+  workflows,
 }: ProductCreationFormProps) {
   const idempotencyKey = useRef(initialIdempotencyKey);
   const targetAtUtcInput = useRef<HTMLInputElement>(null);
@@ -180,6 +182,25 @@ export function ProductCreationForm({
           {orders.map((order) => (
             <option key={order.id} value={order.id}>
               {order.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium" htmlFor="workflowTemplateId">
+          {messages.products.workflow}
+        </label>
+        <select
+          className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+          defaultValue=""
+          id="workflowTemplateId"
+          name="workflowTemplateId"
+        >
+          <option value="">{messages.products.noWorkflow}</option>
+          {workflows.map((workflow) => (
+            <option key={workflow.id} value={workflow.id}>
+              {workflow.label}
             </option>
           ))}
         </select>

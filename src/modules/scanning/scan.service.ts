@@ -12,6 +12,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { requirePermission, type TenantContext } from "@/modules/authorization";
 import { lockEmployeeForProductionMutation } from "@/modules/worker-context/production-context-lock";
+import {
+  mergeWorkflowTransitionMetadata,
+  resolveWorkflowStageForRole,
+} from "@/modules/workflows/server";
+import type {
+  ResolvedWorkflowStage,
+  WorkflowStageResolution,
+} from "@/modules/workflows/server";
 
 import {
   resolveActiveProductionHandlingContextForTenant,
@@ -30,6 +38,8 @@ import {
 } from "./scan-input";
 import type {
   ScanOutcome,
+  ScanWorkflowDto,
+  ScanWorkflowStageDto,
   WorkerScanRequest,
   WorkerScanResult,
   WorkerTakeoverRequest,
@@ -53,6 +63,23 @@ const scanProductSelect = Prisma.validator<Prisma.ProductSelect>()({
   currentRole: { select: { id: true, code: true, name: true } },
   currentLocation: {
     select: { id: true, code: true, name: true, departmentId: true },
+  },
+  workflowSnapshot: {
+    select: {
+      id: true,
+      sourceVersion: true,
+      sourceTemplate: { select: { name: true } },
+      stages: {
+        orderBy: [{ position: "asc" }, { code: "asc" }],
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          position: true,
+          productionRole: { select: { id: true, code: true, name: true } },
+        },
+      },
+    },
   },
   transitions: {
     where: { eventType: ProductTransitionEventType.PRODUCT_COMPLETED },
@@ -84,6 +111,7 @@ const scanProductStatusSchema = z.enum([
 ]);
 const scanOutcomeSchema = z.enum([
   "RECEIVED",
+  "WORKFLOW_STAGE_SELECTION_REQUIRED",
   "FINISH_CONFIRMATION_REQUIRED",
   "TAKEOVER_CONFIRMATION_REQUIRED",
   "COMPLETED_SAME_DEPARTMENT",
@@ -91,6 +119,15 @@ const scanOutcomeSchema = z.enum([
   "COMPLETED_CONTEXT_UNKNOWN",
   "PRODUCT_NOT_RECEIVABLE",
 ]);
+const scanWorkflowStageSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  position: z.number().int().positive(),
+  productionRole: z
+    .object({ id: z.string().uuid(), code: z.string(), name: z.string() })
+    .nullable(),
+});
 const storedScanResultSchema = z
   .object({
     productId: z.string().uuid(),
@@ -127,6 +164,26 @@ const storedScanResultSchema = z
       .nullable()
       .optional()
       .transform((value) => value ?? null),
+    workflow: z
+      .object({
+        snapshotId: z.string().uuid(),
+        templateName: z.string().nullable(),
+        sourceVersion: z.number().int().positive().nullable(),
+        currentStage: scanWorkflowStageSchema.nullable(),
+        expectedNextStage: scanWorkflowStageSchema.nullable(),
+        actualStage: scanWorkflowStageSchema.nullable(),
+        movement: z
+          .enum(["INITIAL", "FORWARD", "BACKWARD", "REPEAT", "UNMAPPED"])
+          .nullable(),
+        deviation: z.boolean(),
+        isRework: z.boolean(),
+        selectionCandidates: z.array(scanWorkflowStageSchema),
+        selectionAction: z.enum(["RECEIVE", "TAKEOVER"]).nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional()
+      .transform((value) => value ?? null),
   })
   .strict();
 
@@ -160,12 +217,28 @@ function hashRequest(input: object): string {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
-function hashReceiveRequest(barcode: string): string {
-  return hashRequest({ barcode, intent: "receive" });
+function hashReceiveRequest(
+  barcode: string,
+  selectedWorkflowStageId?: string | null,
+): string {
+  return hashRequest({
+    barcode,
+    intent: "receive",
+    ...(selectedWorkflowStageId ? { selectedWorkflowStageId } : {}),
+  });
 }
 
-function hashTakeoverRequest(barcode: string, expectedVersion: number): string {
-  return hashRequest({ barcode, expectedVersion, intent: "takeover" });
+function hashTakeoverRequest(
+  barcode: string,
+  expectedVersion: number,
+  selectedWorkflowStageId?: string | null,
+): string {
+  return hashRequest({
+    barcode,
+    expectedVersion,
+    intent: "takeover",
+    ...(selectedWorkflowStageId ? { selectedWorkflowStageId } : {}),
+  });
 }
 
 function parseStoredScanResult(
@@ -191,8 +264,9 @@ async function findScanReplay(
   key: string,
   operation: string,
   requestHash: string,
+  database: ScanDatabase = prisma,
 ): Promise<WorkerScanResult | null> {
-  const existing = await prisma.idempotencyKey.findUnique({
+  const existing = await database.idempotencyKey.findUnique({
     where: {
       organizationId_userId_key: {
         organizationId: context.organizationId,
@@ -296,10 +370,84 @@ function classifyCompleted(
     : "COMPLETED_OTHER_DEPARTMENT";
 }
 
+function toScanWorkflowStage(
+  stage: NonNullable<ScannedProduct["workflowSnapshot"]>["stages"][number],
+): ScanWorkflowStageDto {
+  if (stage.position === null || stage.position <= 0) {
+    throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
+  }
+
+  return {
+    id: stage.id,
+    code: stage.code,
+    name: stage.name,
+    position: stage.position,
+    productionRole: stage.productionRole,
+  };
+}
+
+function defaultScanWorkflow(product: ScannedProduct): ScanWorkflowDto | null {
+  if (!product.workflowSnapshot) {
+    return null;
+  }
+
+  const stages = product.workflowSnapshot.stages.map(toScanWorkflowStage);
+  const currentStage =
+    stages.find((stage) => stage.id === product.currentStageId) ?? null;
+  const expectedNextStage = currentStage
+    ? (stages.find((stage) => stage.position > currentStage.position) ?? null)
+    : (stages[0] ?? null);
+
+  return {
+    snapshotId: product.workflowSnapshot.id,
+    templateName: product.workflowSnapshot.sourceTemplate?.name ?? null,
+    sourceVersion: product.workflowSnapshot.sourceVersion,
+    currentStage,
+    expectedNextStage,
+    actualStage: null,
+    movement: null,
+    deviation: false,
+    isRework: false,
+    selectionCandidates: [],
+    selectionAction: null,
+  };
+}
+
+function scanWorkflowForResolution(
+  product: ScannedProduct,
+  resolution: WorkflowStageResolution | undefined,
+  selectionAction: "RECEIVE" | "TAKEOVER" | null,
+): ScanWorkflowDto | null {
+  const workflow = defaultScanWorkflow(product);
+  if (!workflow || !resolution || resolution.kind === "NO_WORKFLOW") {
+    return workflow;
+  }
+
+  if (resolution.kind === "SELECTION_REQUIRED") {
+    return {
+      ...workflow,
+      currentStage: resolution.selection.currentStage,
+      expectedNextStage: resolution.selection.expectedNextStage,
+      selectionCandidates: resolution.selection.candidates,
+      selectionAction,
+    };
+  }
+
+  return {
+    ...workflow,
+    actualStage: resolution.stage,
+    movement: resolution.movement,
+    deviation: resolution.metadata?.deviation ?? false,
+    isRework: resolution.metadata?.isRework ?? false,
+  };
+}
+
 function toScanResult(
   product: ScannedProduct,
   scanOutcome: ScanOutcome,
   barcode: string,
+  workflowResolution?: WorkflowStageResolution,
+  selectionAction: "RECEIVE" | "TAKEOVER" | null = null,
 ): WorkerScanResult {
   return {
     productId: product.id,
@@ -313,6 +461,11 @@ function toScanResult(
     currentLocation: toLocationDto(product.currentLocation),
     completedAt: product.completedAt?.toISOString() ?? null,
     completedBy: toCompletedBy(product),
+    workflow: scanWorkflowForResolution(
+      product,
+      workflowResolution,
+      selectionAction,
+    ),
   };
 }
 
@@ -334,6 +487,7 @@ async function receiveProductTransaction(
   expectedVersion: number,
   idempotencyKey: string,
   requestHash: string,
+  selectedWorkflowStageId?: string | null,
 ): Promise<WorkerScanResult> {
   return prisma.$transaction(
     async (database) => {
@@ -349,16 +503,16 @@ async function receiveProductTransaction(
           context.tenant,
         );
 
-      await database.idempotencyKey.create({
-        data: {
-          organizationId: currentContext.tenant.organizationId,
-          userId: currentContext.tenant.userId,
-          actorMembershipId: currentContext.tenant.membershipId,
-          key: idempotencyKey,
-          operation: RECEIVE_OPERATION,
-          requestHash,
-        },
-      });
+      const committedReplay = await findScanReplay(
+        currentContext.tenant,
+        idempotencyKey,
+        RECEIVE_OPERATION,
+        requestHash,
+        database,
+      );
+      if (committedReplay) {
+        return committedReplay;
+      }
 
       const product = await findProductByBarcode(
         database,
@@ -394,6 +548,37 @@ async function receiveProductTransaction(
         throw productStateChangedError();
       }
 
+      const workflowResolution = await resolveWorkflowStageForRole({
+        database,
+        organizationId: currentContext.tenant.organizationId,
+        productId: product.id,
+        currentStageId: product.currentStageId,
+        productionRoleId: currentContext.productionRole.id,
+        selectedWorkflowStageId,
+      });
+      if (workflowResolution.kind === "SELECTION_REQUIRED") {
+        return toScanResult(
+          product,
+          "WORKFLOW_STAGE_SELECTION_REQUIRED",
+          barcode,
+          workflowResolution,
+          "RECEIVE",
+        );
+      }
+      const resolvedWorkflow: ResolvedWorkflowStage = workflowResolution;
+      const nextStageId = resolvedWorkflow.stage?.id ?? product.currentStageId;
+
+      await database.idempotencyKey.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          userId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          key: idempotencyKey,
+          operation: RECEIVE_OPERATION,
+          requestHash,
+        },
+      });
+
       const occurredAt = new Date();
       const updated = await database.product.updateMany({
         where: {
@@ -410,6 +595,7 @@ async function receiveProductTransaction(
           currentWorkerId: currentContext.employee.employeeId,
           currentRoleId: currentContext.productionRole.id,
           currentLocationId: currentContext.handlingLocation.id,
+          currentStageId: nextStageId,
           version: { increment: 1 },
         },
       });
@@ -425,7 +611,7 @@ async function receiveProductTransaction(
           employeeId: currentContext.employee.employeeId,
           productionRoleId: currentContext.productionRole.id,
           locationId: currentContext.handlingLocation.id,
-          workflowStageId: null,
+          workflowStageId: resolvedWorkflow.stage?.id ?? null,
           startedAt: occurredAt,
         },
       });
@@ -446,7 +632,11 @@ async function receiveProductTransaction(
           fromLocationId: product.currentLocationId,
           toLocationId: currentContext.handlingLocation.id,
           fromStageId: product.currentStageId,
-          toStageId: product.currentStageId,
+          toStageId: nextStageId,
+          metadata: mergeWorkflowTransitionMetadata(
+            null,
+            resolvedWorkflow.metadata,
+          ),
           occurredAt,
         },
       });
@@ -460,7 +650,12 @@ async function receiveProductTransaction(
         throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
       }
 
-      const result = toScanResult(resultProduct, "RECEIVED", barcode);
+      const result = toScanResult(
+        resultProduct,
+        "RECEIVED",
+        barcode,
+        resolvedWorkflow,
+      );
       await database.idempotencyKey.updateMany({
         where: {
           organizationId: currentContext.tenant.organizationId,
@@ -483,6 +678,7 @@ async function receiveProduct(
   barcode: string,
   idempotencyKey: string,
   requestHash: string,
+  selectedWorkflowStageId?: string | null,
 ) {
   if (
     product.status !== ProductStatus.CREATED &&
@@ -499,6 +695,7 @@ async function receiveProduct(
       product.version,
       idempotencyKey,
       requestHash,
+      selectedWorkflowStageId,
     );
   } catch (error) {
     if (hasUniqueTarget(error, ["organizationId", "userId", "key"])) {
@@ -526,7 +723,10 @@ export async function scanProduct(
 ): Promise<WorkerScanResult> {
   const parsed = parseWorkerScanRequest(input);
   const tenant = await requirePermission("scans.perform");
-  const requestHash = hashReceiveRequest(parsed.barcode);
+  const requestHash = hashReceiveRequest(
+    parsed.barcode,
+    parsed.selectedWorkflowStageId,
+  );
   const replay = await findScanReplay(
     tenant,
     parsed.idempotencyKey,
@@ -557,6 +757,7 @@ export async function scanProduct(
         normalizeBarcode(parsed.barcode),
         parsed.idempotencyKey,
         requestHash,
+        parsed.selectedWorkflowStageId,
       );
     case ProductStatus.IN_PROGRESS:
       if (!product.currentWorkerId) {
@@ -596,6 +797,7 @@ async function takeOverProductTransaction(
   expectedVersion: number,
   idempotencyKey: string,
   requestHash: string,
+  selectedWorkflowStageId?: string | null,
 ): Promise<WorkerScanResult> {
   return prisma.$transaction(
     async (database) => {
@@ -611,16 +813,16 @@ async function takeOverProductTransaction(
           context.tenant,
         );
 
-      await database.idempotencyKey.create({
-        data: {
-          organizationId: currentContext.tenant.organizationId,
-          userId: currentContext.tenant.userId,
-          actorMembershipId: currentContext.tenant.membershipId,
-          key: idempotencyKey,
-          operation: TAKEOVER_OPERATION,
-          requestHash,
-        },
-      });
+      const committedReplay = await findScanReplay(
+        currentContext.tenant,
+        idempotencyKey,
+        TAKEOVER_OPERATION,
+        requestHash,
+        database,
+      );
+      if (committedReplay) {
+        return committedReplay;
+      }
 
       const product = await findProductByBarcode(
         database,
@@ -665,6 +867,37 @@ async function takeOverProductTransaction(
         throw productStateChangedError();
       }
 
+      const workflowResolution = await resolveWorkflowStageForRole({
+        database,
+        organizationId: currentContext.tenant.organizationId,
+        productId: product.id,
+        currentStageId: product.currentStageId,
+        productionRoleId: currentContext.productionRole.id,
+        selectedWorkflowStageId,
+      });
+      if (workflowResolution.kind === "SELECTION_REQUIRED") {
+        return toScanResult(
+          product,
+          "WORKFLOW_STAGE_SELECTION_REQUIRED",
+          barcode,
+          workflowResolution,
+          "TAKEOVER",
+        );
+      }
+      const resolvedWorkflow: ResolvedWorkflowStage = workflowResolution;
+      const nextStageId = resolvedWorkflow.stage?.id ?? product.currentStageId;
+
+      await database.idempotencyKey.create({
+        data: {
+          organizationId: currentContext.tenant.organizationId,
+          userId: currentContext.tenant.userId,
+          actorMembershipId: currentContext.tenant.membershipId,
+          key: idempotencyKey,
+          operation: TAKEOVER_OPERATION,
+          requestHash,
+        },
+      });
+
       const occurredAt = new Date();
       const updated = await database.product.updateMany({
         where: {
@@ -678,6 +911,7 @@ async function takeOverProductTransaction(
           currentWorkerId: currentContext.employee.employeeId,
           currentRoleId: currentContext.productionRole.id,
           currentLocationId: currentContext.handlingLocation.id,
+          currentStageId: nextStageId,
           version: { increment: 1 },
         },
       });
@@ -700,7 +934,7 @@ async function takeOverProductTransaction(
           employeeId: currentContext.employee.employeeId,
           productionRoleId: currentContext.productionRole.id,
           locationId: currentContext.handlingLocation.id,
-          workflowStageId: null,
+          workflowStageId: resolvedWorkflow.stage?.id ?? null,
           startedAt: occurredAt,
         },
       });
@@ -721,8 +955,12 @@ async function takeOverProductTransaction(
           fromLocationId: product.currentLocationId,
           toLocationId: currentContext.handlingLocation.id,
           fromStageId: product.currentStageId,
-          toStageId: product.currentStageId,
+          toStageId: nextStageId,
           reason: "Explicit worker takeover",
+          metadata: mergeWorkflowTransitionMetadata(
+            null,
+            resolvedWorkflow.metadata,
+          ),
           occurredAt,
         },
       });
@@ -742,6 +980,7 @@ async function takeOverProductTransaction(
             workerId: product.currentWorkerId,
             roleId: product.currentRoleId,
             locationId: product.currentLocationId,
+            workflowStageId: activeAssignment.workflowStageId,
           },
           afterData: {
             serialNumber: product.serialNumber,
@@ -750,6 +989,7 @@ async function takeOverProductTransaction(
             workerId: currentContext.employee.employeeId,
             roleId: currentContext.productionRole.id,
             locationId: currentContext.handlingLocation.id,
+            workflowStageId: resolvedWorkflow.stage?.id ?? null,
           },
         },
       });
@@ -763,7 +1003,12 @@ async function takeOverProductTransaction(
         throw new WorkerScanError(SCAN_ERROR_CODES.SCAN_FAILED);
       }
 
-      const result = toScanResult(resultProduct, "RECEIVED", barcode);
+      const result = toScanResult(
+        resultProduct,
+        "RECEIVED",
+        barcode,
+        resolvedWorkflow,
+      );
       await database.idempotencyKey.updateMany({
         where: {
           organizationId: currentContext.tenant.organizationId,
@@ -789,6 +1034,7 @@ export async function takeOverProduct(
   const requestHash = hashTakeoverRequest(
     parsed.barcode,
     parsed.expectedVersion,
+    parsed.selectedWorkflowStageId,
   );
   const replay = await findScanReplay(
     tenant,
@@ -808,6 +1054,7 @@ export async function takeOverProduct(
       parsed.expectedVersion,
       parsed.idempotencyKey,
       requestHash,
+      parsed.selectedWorkflowStageId,
     );
   } catch (error) {
     if (hasUniqueTarget(error, ["organizationId", "userId", "key"])) {

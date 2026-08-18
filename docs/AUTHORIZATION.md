@@ -208,6 +208,12 @@ locations.manage
 workflows.manage
 ```
 
+`workflows.manage` authorizes tenant WorkflowTemplate creation, new immutable
+versions, activation, and deactivation. It does not grant ProductionRole
+capability or Product creation. Product creators need `products.create`, and
+worker stage resolution still requires the scan/lifecycle permissions plus an
+assigned active ProductionRole.
+
 ### Audit and reporting
 
 ```text

@@ -210,6 +210,14 @@ trusted for Product mutation. Product `version` compare-and-set remains the
 separate Product-level concurrency guard. A stale takeover version is reported
 as `SCAN_CONFLICT` so the worker can scan again.
 
+Phase 9 stage IDs are untrusted input. The server accepts a selected stage only
+when it belongs to the authenticated tenant's Product snapshot and is mapped to
+the authoritative active ProductionRole resolved inside the transaction.
+Foreign and arbitrary IDs return the same unavailable error. Ambiguous
+resolution is read-only and does not reserve an idempotency key; explicit
+selections are included in receive, takeover, and return-to-process request
+hashes. Workflow configuration mutations require `workflows.manage`.
+
 ## 11. Rate limiting
 
 Apply rate limiting where abuse risk exists.

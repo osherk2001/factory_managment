@@ -5,6 +5,8 @@ export const PRODUCT_ERROR_CODES = {
   PRODUCT_ORDER_NOT_FOUND: "PRODUCT_ORDER_NOT_FOUND",
   PRODUCT_TYPE_NOT_FOUND: "PRODUCT_TYPE_NOT_FOUND",
   PRODUCT_TYPE_INACTIVE: "PRODUCT_TYPE_INACTIVE",
+  PRODUCT_WORKFLOW_NOT_AVAILABLE: "PRODUCT_WORKFLOW_NOT_AVAILABLE",
+  PRODUCT_WORKFLOW_INVALID: "PRODUCT_WORKFLOW_INVALID",
   IDEMPOTENCY_CONFLICT: "IDEMPOTENCY_CONFLICT",
   SERIAL_ALLOCATION_FAILED: "SERIAL_ALLOCATION_FAILED",
   BARCODE_GENERATION_FAILED: "BARCODE_GENERATION_FAILED",
@@ -19,6 +21,8 @@ const DEFAULT_MESSAGES: Record<ProductErrorCode, string> = {
   PRODUCT_ORDER_NOT_FOUND: "The production order is not available.",
   PRODUCT_TYPE_NOT_FOUND: "The product type is not available.",
   PRODUCT_TYPE_INACTIVE: "The selected product type is inactive.",
+  PRODUCT_WORKFLOW_NOT_AVAILABLE: "The selected workflow is not available.",
+  PRODUCT_WORKFLOW_INVALID: "The selected workflow is invalid.",
   IDEMPOTENCY_CONFLICT:
     "This submission key was already used for different details.",
   SERIAL_ALLOCATION_FAILED: "A product serial number could not be allocated.",

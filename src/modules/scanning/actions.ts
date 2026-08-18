@@ -6,6 +6,10 @@ import {
   returnCompletedProductToProcess,
 } from "@/modules/products/server";
 import { isWorkerContextError } from "@/modules/worker-context";
+import {
+  isWorkflowError,
+  isWorkflowStageSelectionRequiredError,
+} from "@/modules/workflows/server";
 
 import { isWorkerScanError } from "./scan-errors";
 import { scanProduct, takeOverProduct } from "./server";
@@ -20,11 +24,28 @@ function getErrorState(
   previousState: WorkerScanActionState,
   error: unknown,
 ): WorkerScanActionState {
-  if (isWorkerScanError(error) || isWorkerContextError(error)) {
+  if (isWorkflowStageSelectionRequiredError(error)) {
+    return {
+      ...previousState,
+      lifecycleResult: null,
+      workflowSelection: {
+        action: "RETURN_TO_PROCESS",
+        selection: error.selection,
+      },
+      errorCode: error.code,
+    };
+  }
+
+  if (
+    isWorkerScanError(error) ||
+    isWorkerContextError(error) ||
+    isWorkflowError(error)
+  ) {
     return {
       ...previousState,
       result: null,
       lifecycleResult: null,
+      workflowSelection: null,
       errorCode: error.code,
     };
   }
@@ -34,6 +55,7 @@ function getErrorState(
       ...previousState,
       result: null,
       lifecycleResult: null,
+      workflowSelection: null,
       errorCode: error.code === "FORBIDDEN" ? "FORBIDDEN" : "UNAUTHORIZED",
     };
   }
@@ -42,6 +64,7 @@ function getErrorState(
     ...previousState,
     result: null,
     lifecycleResult: null,
+    workflowSelection: null,
     errorCode: "SCAN_FAILED",
   };
 }
@@ -54,9 +77,16 @@ export async function scanProductAction(
     const result = await scanProduct({
       barcode: getString(formData, "barcode"),
       idempotencyKey: getString(formData, "idempotencyKey"),
+      selectedWorkflowStageId:
+        getString(formData, "selectedWorkflowStageId") || null,
     });
 
-    return { result, lifecycleResult: null, errorCode: null };
+    return {
+      result,
+      lifecycleResult: null,
+      workflowSelection: null,
+      errorCode: null,
+    };
   } catch (error) {
     return getErrorState(previousState, error);
   }
@@ -72,9 +102,16 @@ export async function takeOverProductAction(
       barcode: getString(formData, "barcode"),
       expectedVersion,
       idempotencyKey: getString(formData, "idempotencyKey"),
+      selectedWorkflowStageId:
+        getString(formData, "selectedWorkflowStageId") || null,
     });
 
-    return { result, lifecycleResult: null, errorCode: null };
+    return {
+      result,
+      lifecycleResult: null,
+      workflowSelection: null,
+      errorCode: null,
+    };
   } catch (error) {
     return getErrorState(previousState, error);
   }
@@ -98,11 +135,16 @@ export async function workerScanAction(
       const lifecycleResult =
         operation === "finish"
           ? await finishProduct(input)
-          : await returnCompletedProductToProcess(input);
+          : await returnCompletedProductToProcess({
+              ...input,
+              selectedWorkflowStageId:
+                getString(formData, "selectedWorkflowStageId") || null,
+            });
       return {
         ...previousState,
         result: null,
         lifecycleResult,
+        workflowSelection: null,
         errorCode: null,
       };
     } catch (error) {

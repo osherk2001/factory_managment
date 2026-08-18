@@ -8,6 +8,7 @@ import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { requirePermission } from "@/modules/authorization/permission.service";
 
 import { ProductCreationForm } from "@/modules/products/product-form";
+import { listActiveWorkflowTemplatesForOrganization } from "@/modules/workflows/server";
 
 const messages = getMessages(defaultLocale);
 
@@ -23,7 +24,7 @@ export default async function NewProductPage() {
     notFound();
   }
 
-  const [orders, productTypes] = await Promise.all([
+  const [orders, productTypes, workflows] = await Promise.all([
     prisma.productionOrder.findMany({
       where: { organizationId: context.organizationId },
       orderBy: { createdAt: "desc" },
@@ -36,6 +37,7 @@ export default async function NewProductPage() {
       take: 100,
       select: { id: true, code: true, name: true },
     }),
+    listActiveWorkflowTemplatesForOrganization(context.organizationId),
   ]);
 
   return (
@@ -58,6 +60,10 @@ export default async function NewProductPage() {
           productTypes={productTypes.map((productType) => ({
             id: productType.id,
             label: `${productType.code} — ${productType.name}`,
+          }))}
+          workflows={workflows.map((workflow) => ({
+            id: workflow.id,
+            label: `${workflow.name} (v${workflow.version})`,
           }))}
         />
       </section>

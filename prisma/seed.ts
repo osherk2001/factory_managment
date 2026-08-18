@@ -130,6 +130,13 @@ const FIXTURE_IDS = {
     safe: "00000000-0000-4000-8000-000000000105",
     waiting: "00000000-0000-4000-8000-000000000106",
   },
+  workflow: {
+    template: "00000000-0000-4000-8000-000000000111",
+    primary: "00000000-0000-4000-8000-000000000112",
+    secondary: "00000000-0000-4000-8000-000000000113",
+    cleaning: "00000000-0000-4000-8000-000000000114",
+    quality: "00000000-0000-4000-8000-000000000115",
+  },
 } as const;
 
 const USER_FIXTURES = [
@@ -511,6 +518,42 @@ const LOCATION_FIXTURES = [
   },
 ] as const;
 
+const WORKFLOW_FIXTURE = {
+  id: FIXTURE_IDS.workflow.template,
+  name: "Standard Production Flow",
+  version: 1,
+  stages: [
+    {
+      id: FIXTURE_IDS.workflow.primary,
+      code: "PRIMARY_PROCESSING",
+      name: "Primary Processing",
+      position: 1,
+      productionRoleCode: "POLISHER",
+    },
+    {
+      id: FIXTURE_IDS.workflow.secondary,
+      code: "SECONDARY_PROCESSING",
+      name: "Secondary Processing",
+      position: 2,
+      productionRoleCode: "STONE_SETTER",
+    },
+    {
+      id: FIXTURE_IDS.workflow.cleaning,
+      code: "CLEANING",
+      name: "Cleaning",
+      position: 3,
+      productionRoleCode: "CLEANER",
+    },
+    {
+      id: FIXTURE_IDS.workflow.quality,
+      code: "QUALITY_CONTROL",
+      name: "Quality Control",
+      position: 4,
+      productionRoleCode: "QUALITY_INSPECTOR",
+    },
+  ],
+} as const;
+
 export type DevelopmentSeedSummary = {
   organization: number;
   users: number;
@@ -524,6 +567,8 @@ export type DevelopmentSeedSummary = {
   employeeProductionRoles: number;
   departments: number;
   locations: number;
+  workflowTemplates: number;
+  workflowTemplateStages: number;
 };
 
 function assertDevelopmentSeedEnvironment() {
@@ -876,6 +921,53 @@ export async function seedDevelopmentFixtures(
       employeeProductionRoles += 1;
     }
 
+    const workflowTemplate = await tx.workflowTemplate.upsert({
+      where: {
+        organizationId_name_version: {
+          organizationId: organization.id,
+          name: WORKFLOW_FIXTURE.name,
+          version: WORKFLOW_FIXTURE.version,
+        },
+      },
+      update: {},
+      create: {
+        id: WORKFLOW_FIXTURE.id,
+        organizationId: organization.id,
+        name: WORKFLOW_FIXTURE.name,
+        version: WORKFLOW_FIXTURE.version,
+        isActive: true,
+      },
+    });
+
+    for (const stage of WORKFLOW_FIXTURE.stages) {
+      const productionRole = productionRolesByCode.get(
+        stage.productionRoleCode,
+      );
+      if (!productionRole) {
+        throw new Error(
+          `Missing production role for workflow stage ${stage.code}`,
+        );
+      }
+      await tx.workflowTemplateStage.upsert({
+        where: {
+          workflowTemplateId_code: {
+            workflowTemplateId: workflowTemplate.id,
+            code: stage.code,
+          },
+        },
+        update: {},
+        create: {
+          id: stage.id,
+          organizationId: organization.id,
+          workflowTemplateId: workflowTemplate.id,
+          productionRoleId: productionRole.id,
+          code: stage.code,
+          name: stage.name,
+          position: stage.position,
+        },
+      });
+    }
+
     return {
       organization: 1,
       users: USER_FIXTURES.length,
@@ -889,6 +981,8 @@ export async function seedDevelopmentFixtures(
       employeeProductionRoles,
       departments: DEPARTMENT_FIXTURES.length,
       locations: LOCATION_FIXTURES.length,
+      workflowTemplates: 1,
+      workflowTemplateStages: WORKFLOW_FIXTURE.stages.length,
     };
   });
 }
@@ -915,6 +1009,8 @@ async function main() {
         `employeeProductionRoles=${summary.employeeProductionRoles}`,
         `departments=${summary.departments}`,
         `locations=${summary.locations}`,
+        `workflowTemplates=${summary.workflowTemplates}`,
+        `workflowTemplateStages=${summary.workflowTemplateStages}`,
       ].join(" ") + "\n",
     );
   } catch (error) {

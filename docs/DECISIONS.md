@@ -1047,6 +1047,49 @@ with the same key returns an idempotency conflict. Product version
 compare-and-set and the existing one-active-assignment database invariant
 protect concurrent requests.
 
+---
+
+### D-054: Workflow configuration uses immutable versions and Product snapshots
+
+Status: Approved
+
+Decision:
+
+A WorkflowTemplate row is one immutable tenant-owned version. Configuration
+changes create the next integer version, while activation determines which
+versions may be selected for new Products. Optional Product workflow selection
+copies a Product-owned WorkflowSnapshot and stages inside the Product creation
+transaction. Later template changes never rewrite snapshots.
+
+---
+
+### D-055: Active ProductionRole resolves an advisory snapshot stage
+
+Status: Approved
+
+Decision:
+
+Receive, takeover, and return-to-process resolve the authoritative active
+ProductionRole against the Product snapshot in the mutation transaction. One
+match is automatic; multiple matches require a safe explicit selection before
+any write; no match remains allowed and is recorded as `UNMAPPED` while
+preserving the prior Product stage. Selected stage IDs are tenant, Product,
+snapshot, and role validated and participate in idempotency hashes.
+
+---
+
+### D-056: ProductTransition is the actual workflow path
+
+Status: Approved
+
+Decision:
+
+Snapshot stage position provides a linear expected-next-stage reference, not a
+blocking graph. Actual handling is append-only ProductTransition history and is
+classified as `INITIAL`, `FORWARD`, `BACKWARD`, `REPEAT`, or `UNMAPPED`.
+Backward and repeat are rework; differences from the expected stage are
+non-blocking deviations stored under versioned workflow metadata.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:
@@ -1054,6 +1097,5 @@ The following still require product decisions before implementation:
 - undo behavior
 - manual status-change permissions
 - order lifecycle
-- workflow-stage model
 - exact location rules
 - barcode format and printer standard

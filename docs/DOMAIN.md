@@ -244,7 +244,9 @@ Responsibilities:
 Rules:
 
 - Core logic must not hard-code jewelry-specific stages.
-- Templates may change over time.
+- A template row is an immutable version; changes create a new version.
+- Only active tenant versions may be selected for new Products.
+- Stage codes and positive positions are unique within a version.
 
 ### WorkflowSnapshot
 
@@ -257,6 +259,8 @@ Responsibilities:
 Rules:
 
 - Editing a WorkflowTemplate must not silently alter historical Product behavior.
+- Snapshot stages are copied atomically during Product creation.
+- A Product may intentionally have no workflow snapshot.
 
 ### Issue
 
@@ -653,6 +657,11 @@ Every movement must remain visible in ProductTransition history.
 
 Historical transitions are never removed to make the workflow appear linear.
 
+Phase 9 classifies actual handling as `INITIAL`, `FORWARD`, `BACKWARD`,
+`REPEAT`, or `UNMAPPED`. Backward and repeat movement is rework. A movement
+that differs from the position-based expected next stage is a non-blocking
+deviation.
+
 ### Active role
 
 A worker may be authorized for multiple operational roles.
@@ -679,6 +688,12 @@ If the worker is authorized and the Product can otherwise be received:
 - the receive action is allowed
 - the selected active role determines the recorded stage
 - the actual movement is appended to ProductTransition history
+
+When one active role maps to multiple stages in the Product snapshot, the
+worker must explicitly select one safe candidate before mutation. A role with
+no mapped stage may still handle the Product; the assignment stage is null,
+the Product's prior current stage is preserved, and the transition records an
+`UNMAPPED` deviation.
 
 A worker may be authorized for multiple roles, for example `POLISHER` and `STONE_SETTER`, but only the currently selected active role is used for the current ProductAssignment and transition.
 

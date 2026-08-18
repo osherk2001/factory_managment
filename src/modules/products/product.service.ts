@@ -10,6 +10,11 @@ import { logger } from "@/lib/logging/logger";
 import { tenantWhere } from "@/modules/authorization/tenant-scope";
 import { requirePermission } from "@/modules/authorization/permission.service";
 import type { TenantContext } from "@/modules/authorization/authorization.types";
+import {
+  createWorkflowSnapshotForProduct,
+  isWorkflowError,
+  WORKFLOW_ERROR_CODES,
+} from "@/modules/workflows/server";
 
 import { BARCODE_GENERATION_ATTEMPTS, generateBarcodeValue } from "./barcode";
 import {
@@ -35,6 +40,15 @@ const storedCreationResultSchema = z
     isUrgent: z.boolean(),
     targetAt: explicitProductDateTimeSchema.nullable(),
     createdAt: explicitProductDateTimeSchema,
+    workflow: z
+      .object({
+        snapshotId: z.string().uuid(),
+        templateId: z.string().uuid().nullable(),
+        templateName: z.string().nullable(),
+        sourceVersion: z.number().int().positive().nullable(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -42,6 +56,7 @@ const createProductInputSchema = z
   .object({
     productionOrderId: z.string().uuid().nullable().optional(),
     productTypeId: z.string().uuid().nullable().optional(),
+    workflowTemplateId: z.string().uuid().nullable().optional(),
     isUrgent: z.boolean().default(false),
     targetAt: explicitProductDateTimeSchema.nullable().optional(),
     idempotencyKey: z.string().trim().min(1).max(255),
@@ -53,12 +68,16 @@ type TransactionClient = Prisma.TransactionClient;
 type ProductReadDatabase = Pick<typeof prisma, "product"> | TransactionClient;
 
 function normalizeInput(input: ParsedCreateProductInput) {
-  return {
+  const normalized = {
     productionOrderId: input.productionOrderId ?? null,
     productTypeId: input.productTypeId ?? null,
     isUrgent: input.isUrgent,
     targetAt: input.targetAt ? normalizeProductTargetAt(input.targetAt) : null,
   };
+
+  return input.workflowTemplateId
+    ? { ...normalized, workflowTemplateId: input.workflowTemplateId }
+    : normalized;
 }
 
 export function hashCreateProductRequest(
@@ -99,6 +118,23 @@ function productCreationFailure(
   error: unknown,
   context: { userId: string; organizationId: string },
 ): ProductCreationError {
+  if (isWorkflowError(error)) {
+    const code =
+      error.code === WORKFLOW_ERROR_CODES.WORKFLOW_INVALID
+        ? PRODUCT_ERROR_CODES.PRODUCT_WORKFLOW_INVALID
+        : PRODUCT_ERROR_CODES.PRODUCT_WORKFLOW_NOT_AVAILABLE;
+    logger.warn(
+      {
+        event: "product_creation_failed",
+        code,
+        userId: context.userId,
+        organizationId: context.organizationId,
+      },
+      "Product creation failed",
+    );
+    return new ProductCreationError(code);
+  }
+
   if (isProductCreationError(error)) {
     logger.warn(
       {
@@ -159,6 +195,14 @@ async function readProductDto(
       isUrgent: true,
       targetAt: true,
       createdAt: true,
+      workflowSnapshot: {
+        select: {
+          id: true,
+          sourceTemplateId: true,
+          sourceVersion: true,
+          sourceTemplate: { select: { name: true } },
+        },
+      },
     },
   });
 
@@ -180,6 +224,16 @@ async function readProductDto(
     isUrgent: product.isUrgent,
     targetAt: product.targetAt?.toISOString() ?? null,
     createdAt: product.createdAt.toISOString(),
+    ...(product.workflowSnapshot
+      ? {
+          workflow: {
+            snapshotId: product.workflowSnapshot.id,
+            templateId: product.workflowSnapshot.sourceTemplateId,
+            templateName: product.workflowSnapshot.sourceTemplate?.name ?? null,
+            sourceVersion: product.workflowSnapshot.sourceVersion,
+          },
+        }
+      : {}),
   };
 }
 
@@ -326,6 +380,15 @@ async function createProductTransaction(
       },
     });
 
+    if (input.workflowTemplateId) {
+      await createWorkflowSnapshotForProduct({
+        database,
+        organizationId: context.organizationId,
+        productId: product.id,
+        workflowTemplateId: input.workflowTemplateId,
+      });
+    }
+
     await database.productTransition.create({
       data: {
         organizationId: context.organizationId,
@@ -363,6 +426,7 @@ async function createProductTransaction(
           productTypeId: normalizedInput.productTypeId,
           isUrgent: normalizedInput.isUrgent,
           targetAt: normalizedInput.targetAt,
+          workflowTemplateId: input.workflowTemplateId ?? null,
         },
       },
     });

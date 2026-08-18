@@ -57,6 +57,22 @@ export type WorkerProductDto = {
     code: string;
     name: string;
   } | null;
+  workflow: {
+    templateName: string | null;
+    currentStage: {
+      id: string;
+      code: string;
+      name: string;
+      position: number;
+    } | null;
+    expectedNextStage: {
+      id: string;
+      code: string;
+      name: string;
+      position: number;
+    } | null;
+    deviation: boolean;
+  } | null;
 };
 
 export type WorkerHomeData = {

@@ -147,14 +147,20 @@ Phase 8 adds Finish work from `/app/worker` and explicit scan confirmation,
 explicit completion, return-to-process, cancellation, restoration, logical
 trash, and a minimal management view at `/app/products/[productId]`. Lifecycle
 mutations are server-authorized, version-checked, idempotent, and preserve
-append-only Product history. No workflow progression or physical deletion is
-included.
+append-only Product history. Physical deletion is not included.
 
-## Deliberate Phase 8 boundary
+## Workflow engine
 
-Phase 8 does not include workflow progression, expected-next-stage logic,
-issue lifecycle, weights, dashboards, reports, physical deletion, undo, or
-camera scanning. The seed still establishes users without passwords; local
-password setup and System Admin bootstrap are explicit commands.
+Phase 9 adds `/app/workflows`, immutable tenant workflow versions, optional
+workflow selection during Product creation, Product-owned snapshots, and
+advisory stage resolution for receive, takeover, and return-to-process. Worker
+and Product views show current/expected stages and the actual path. The seed
+adds one deterministic `Standard Production Flow` template but no operational
+Products or snapshots.
+
+Phase 9 does not include issue lifecycle, weights, dashboards, reports,
+physical deletion, undo, camera scanning, or branching workflow graphs. The
+seed still establishes users without passwords; local password setup and
+System Admin bootstrap are explicit commands.
 `SYSTEM_ADMIN` remains a platform-level concept and is not seeded as a tenant
 access role.

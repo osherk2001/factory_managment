@@ -84,6 +84,23 @@ describe.sequential("Phase 3 development fixtures", () => {
         },
       }),
     ).resolves.toBe(4);
+    await expect(
+      prisma.workflowTemplate.count({
+        where: {
+          organizationId: organization.id,
+          name: "Standard Production Flow",
+          version: 1,
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.workflowTemplateStage.count({
+        where: {
+          organizationId: organization.id,
+          workflowTemplate: { name: "Standard Production Flow", version: 1 },
+        },
+      }),
+    ).resolves.toBe(4);
   });
 
   it("assigns the expected AccessRole to the Factory Admin and workers", async () => {
@@ -225,7 +242,7 @@ describe.sequential("Phase 3 development fixtures", () => {
     expect(permissionCodes).toEqual(expectedPermissionCodes);
   });
 
-  it("does not create operational Product or workflow records", async () => {
+  it("does not create operational Product or workflow snapshot records", async () => {
     const organization = await prisma.organization.findUniqueOrThrow({
       where: { slug: DEVELOPMENT_ORGANIZATION.slug },
     });

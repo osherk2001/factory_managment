@@ -51,6 +51,13 @@ The operation:
 - records workflow stage
 - appends ProductTransition
 
+When the Product has a WorkflowSnapshot, receive resolves the active
+ProductionRole to a snapshot stage inside the scan transaction. One match is
+automatic, multiple matches require a read-only explicit selection, and no
+match records an `UNMAPPED` deviation without blocking the otherwise valid
+scan. Takeover uses the same resolver. The selected stage is part of the
+idempotency request hash.
+
 The scan resolves the worker's active role assignment, including its
 role-specific handling Location. The barcode lookup is scoped by the trusted
 Organization; an unknown barcode and a barcode from another tenant have the

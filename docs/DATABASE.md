@@ -697,6 +697,9 @@ UNIQUE(workflowTemplateId, code)
 ```
 
 `position` is advisory and does not mean the workflow is strictly linear.
+Phase 9 application validation requires positive, unique positions and unique
+codes within each immutable template version. The existing database schema is
+unchanged; no Phase 9 migration is required.
 
 ## WorkflowSnapshot
 
@@ -748,6 +751,12 @@ UNIQUE(organizationId, productId, id)
 `productId` is materialized from the owning `WorkflowSnapshot` so Product,
 assignment, and transition stage references can use composite foreign keys.
 It is not a workflow-order field and does not make the workflow linear.
+
+Product creation copies all snapshot rows in the same transaction as the
+Product. Receive, takeover, and return-to-process set `Product.currentStageId`,
+`ProductAssignment.workflowStageId`, and transition stage references using the
+same Product-scoped composite foreign keys. Unmapped-role actions intentionally
+store a null assignment stage while preserving the Product current stage.
 
 ## ProductAssignment
 

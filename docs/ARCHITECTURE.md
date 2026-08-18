@@ -162,7 +162,8 @@ src/modules/worker-context/
 available active ProductionRoles, persisted working context, and personal
 `IN_PROGRESS` Products. Role selection requires `scans.perform`; personal
 Product reads require `products.read`. The worker context module never mutates
-Products, executes workflows, or performs scans.
+Products or performs scans. It now projects current and expected snapshot stage
+information written by the workflow service.
 
 Phase 7 adds the scanning server boundary:
 
@@ -179,10 +180,21 @@ src/modules/scanning/
 `/app/worker/scan` accepts a decoded barcode string. The service resolves the
 role-specific handling Location, performs a tenant-scoped barcode lookup, and
 uses Product version compare-and-set plus the existing active-assignment
-constraint. Same-worker and completed-product results are read-only
-confirmation/classification outcomes in this phase. Camera capture, finish,
-completed-product return, and workflow execution remain separate future
-operations.
+constraint. Same-worker and completed-product scan results remain read-only
+confirmation/classification outcomes. Camera capture remains future work.
+Finish and completed-product return use the lifecycle module; Phase 9 stage
+resolution is invoked by receive, takeover, and return-to-process inside their
+existing transactions.
+
+The Phase 9 workflow boundary is organized under `src/modules/workflows/`:
+
+```text
+workflow-template.service.ts   immutable versions and activation
+workflow-snapshot.service.ts   transactional Product snapshot copies
+workflow-stage-resolver.ts     role-to-stage resolution and safe candidates
+workflow-movement.ts           movement, deviation, rework, metadata merge
+workflow-management.tsx        tenant workflow management UI
+```
 
 `proxy.ts` is an optimistic route filter. It must not be the only
 authorization layer. Protected server actions, route handlers, and future
@@ -321,6 +333,12 @@ Workflow is configurable and advisory.
 It describes the expected path but does not block an otherwise valid receive action solely because the selected ProductionRole differs from the expected next stage.
 
 The system records the actual path taken.
+
+Template versions are immutable. Product creation copies an optional active
+template to a Product-owned snapshot. The linear position order supplies an
+expected-next-stage reference, while ProductTransition remains the append-only
+actual path. Multiple stage mappings for one active ProductionRole require an
+explicit user selection before any mutation.
 
 ## 12. Mobile-first worker experience
 

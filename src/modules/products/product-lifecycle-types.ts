@@ -1,3 +1,5 @@
+import type { ProductWorkflowDto } from "@/modules/workflows";
+
 export type ProductLifecycleStatus =
   | "CREATED"
   | "IN_PROGRESS"
@@ -35,6 +37,7 @@ export type ProductLifecycleResultDto = {
   completedAt: string | null;
   cancelledAt: string | null;
   trashedAt: string | null;
+  workflow: ProductWorkflowDto | null;
 };
 
 export type ProductLifecycleOperation =
@@ -49,4 +52,8 @@ export type ProductLifecycleInput = {
   productId: string;
   expectedVersion: number;
   idempotencyKey: string;
+};
+
+export type ReturnProductToProcessInput = ProductLifecycleInput & {
+  selectedWorkflowStageId?: string | null;
 };

@@ -113,6 +113,81 @@ export default async function ProductDetailsPage({
           </dl>
         </section>
 
+        {product.workflow ? (
+          <section
+            className="space-y-4 rounded-xl border bg-white p-5 shadow-sm"
+            data-testid="product-workflow"
+          >
+            <h2 className="text-xl font-semibold">
+              {messages.products.workflowDetails}
+            </h2>
+            <dl className="grid gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-muted-foreground">
+                  {messages.products.workflow}
+                </dt>
+                <dd data-testid="product-workflow-name">
+                  {product.workflow.templateName ?? messages.products.notSet} ·
+                  v{product.workflow.sourceVersion ?? messages.products.notSet}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-muted-foreground">
+                  {messages.products.currentWorkflowStage}
+                </dt>
+                <dd data-testid="product-current-stage">
+                  {product.workflow.currentStage?.name ??
+                    messages.products.notSet}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-muted-foreground">
+                  {messages.products.expectedWorkflowStage}
+                </dt>
+                <dd data-testid="product-expected-stage">
+                  {product.workflow.expectedNextStage?.name ??
+                    messages.products.notSet}
+                </dd>
+              </div>
+            </dl>
+            <ol className="space-y-2" data-testid="product-workflow-stages">
+              {product.workflow.stages.map((stage) => (
+                <li
+                  className="rounded-lg border px-3 py-2 text-sm"
+                  key={stage.id}
+                >
+                  {stage.position}. {stage.name} ({stage.code})
+                </li>
+              ))}
+            </ol>
+            {data.workflowHistory.length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="font-semibold">
+                  {messages.products.actualStagePath}
+                </h3>
+                <ol
+                  className="space-y-2"
+                  data-testid="product-workflow-history"
+                >
+                  {data.workflowHistory.map((transition) => (
+                    <li
+                      className="rounded-lg bg-muted px-3 py-2 text-sm"
+                      key={transition.id}
+                    >
+                      {transition.fromStage?.name ?? messages.products.notSet} →{" "}
+                      {transition.toStage?.name ?? messages.products.notSet}
+                      {transition.movement ? ` · ${transition.movement}` : ""}
+                      {transition.deviation
+                        ? ` · ${messages.products.workflowDeviation}`
+                        : ""}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <ProductLifecycleControls data={data} />
       </section>
     </main>

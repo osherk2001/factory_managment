@@ -31,6 +31,8 @@ function outcomeMessage(outcome: ScanOutcome): string {
   switch (outcome) {
     case "RECEIVED":
       return messages.worker.scanSuccess;
+    case "WORKFLOW_STAGE_SELECTION_REQUIRED":
+      return messages.worker.workflowStageSelectionRequired;
     case "FINISH_CONFIRMATION_REQUIRED":
       return messages.worker.finishConfirmationRequired;
     case "TAKEOVER_CONFIRMATION_REQUIRED":
@@ -97,6 +99,18 @@ function errorMessage(
     case "PRODUCT_NOT_RECEIVABLE":
     case "TAKEOVER_NOT_ALLOWED":
       return messages.worker.productNotReceivable;
+    case "WORKFLOW_STAGE_NOT_AVAILABLE":
+    case "WORKFLOW_INVALID":
+      return messages.worker.workflowStageUnavailable;
+    case "WORKFLOW_STAGE_SELECTION_REQUIRED":
+      return null;
+    case "INVALID_WORKFLOW_INPUT":
+    case "WORKFLOW_NOT_FOUND":
+    case "WORKFLOW_NOT_ACTIVE":
+    case "WORKFLOW_NAME_CONFLICT":
+    case "WORKFLOW_VERSION_CONFLICT":
+    case "WORKFLOW_ROLE_NOT_AVAILABLE":
+      return messages.worker.scanFailed;
     case "FORBIDDEN":
     case "UNAUTHORIZED":
       return messages.worker.scanUnauthorized;
@@ -154,6 +168,35 @@ function ResultDetails({ result }: { result: WorkerScanResult }) {
             <dd>{result.completedBy.displayName}</dd>
           </div>
         ) : null}
+        {result.workflow ? (
+          <>
+            <div>
+              <dt className="font-medium text-muted-foreground">
+                {messages.worker.currentWorkflowStage}
+              </dt>
+              <dd data-testid="scan-current-stage">
+                {result.workflow.currentStage?.name ?? messages.worker.notSet}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted-foreground">
+                {messages.worker.expectedWorkflowStage}
+              </dt>
+              <dd data-testid="scan-expected-stage">
+                {result.workflow.expectedNextStage?.name ??
+                  messages.worker.notSet}
+              </dd>
+            </div>
+            {result.workflow.deviation ? (
+              <div data-testid="workflow-deviation">
+                <dt className="font-medium text-muted-foreground">
+                  {messages.worker.workflowDeviation}
+                </dt>
+                <dd>{messages.worker.yes}</dd>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </dl>
     </div>
   );
@@ -192,6 +235,87 @@ function LifecycleResultDetails({
 }
 
 type WorkerScanFormAction = (formData: FormData) => void;
+
+function WorkflowStageSelection({
+  action,
+  barcode,
+  candidates,
+  expectedVersion,
+  formAction,
+  isSubmitting,
+  productId,
+}: {
+  action: "RECEIVE" | "TAKEOVER" | "RETURN_TO_PROCESS";
+  barcode: string;
+  candidates: NonNullable<WorkerScanResult["workflow"]>["selectionCandidates"];
+  expectedVersion: number;
+  formAction: WorkerScanFormAction;
+  isSubmitting: boolean;
+  productId: string;
+}) {
+  return (
+    <section
+      className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-5"
+      data-testid="workflow-stage-selection"
+    >
+      <h2 className="text-xl font-semibold">
+        {messages.worker.chooseWorkflowStage}
+      </h2>
+      <p className="text-sm">
+        {messages.worker.workflowStageSelectionRequired}
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {candidates.map((stage) => (
+          <form
+            action={formAction}
+            key={stage.id}
+            onSubmit={setFreshIdempotencyKey}
+          >
+            <input
+              defaultValue={`${action}:${productId}:${expectedVersion}:${stage.id}`}
+              name="idempotencyKey"
+              type="hidden"
+            />
+            <input
+              name="operation"
+              type="hidden"
+              value={
+                action === "RECEIVE"
+                  ? "scan"
+                  : action === "TAKEOVER"
+                    ? "takeover"
+                    : "return_to_process"
+              }
+            />
+            <input name="barcode" type="hidden" value={barcode} />
+            <input name="productId" type="hidden" value={productId} />
+            <input
+              name="expectedVersion"
+              type="hidden"
+              value={expectedVersion}
+            />
+            <input
+              name="selectedWorkflowStageId"
+              type="hidden"
+              value={stage.id}
+            />
+            <button
+              className="min-h-14 w-full rounded-xl border bg-white px-5 py-3 text-start text-base font-semibold"
+              data-testid="workflow-stage-option"
+              disabled={isSubmitting}
+              type="submit"
+            >
+              <span className="block">{stage.name}</span>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                {stage.code} · {stage.position}
+              </span>
+            </button>
+          </form>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function TakeoverForm({
   result,
@@ -429,7 +553,28 @@ export function WorkerScanPage({
             </p>
           ) : null}
 
-          {state.result ? (
+          {state.result?.scanOutcome === "WORKFLOW_STAGE_SELECTION_REQUIRED" &&
+          state.result.workflow?.selectionAction ? (
+            <WorkflowStageSelection
+              action={state.result.workflow.selectionAction}
+              barcode={state.result.barcode}
+              candidates={state.result.workflow.selectionCandidates}
+              expectedVersion={state.result.version}
+              formAction={formAction}
+              isSubmitting={isSubmitting}
+              productId={state.result.productId}
+            />
+          ) : state.workflowSelection && state.result ? (
+            <WorkflowStageSelection
+              action="RETURN_TO_PROCESS"
+              barcode={state.result.barcode}
+              candidates={state.workflowSelection.selection.candidates}
+              expectedVersion={state.result.version}
+              formAction={formAction}
+              isSubmitting={isSubmitting}
+              productId={state.result.productId}
+            />
+          ) : state.result ? (
             state.result.scanOutcome === "TAKEOVER_CONFIRMATION_REQUIRED" ? (
               <TakeoverForm
                 barcode={state.result.barcode}

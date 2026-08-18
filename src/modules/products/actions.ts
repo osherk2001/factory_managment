@@ -19,6 +19,7 @@ export async function createProductAction(
     const product = await createProduct({
       productionOrderId: getFormValue(formData, "productionOrderId") || null,
       productTypeId: getFormValue(formData, "productTypeId") || null,
+      workflowTemplateId: getFormValue(formData, "workflowTemplateId") || null,
       isUrgent: getFormValue(formData, "isUrgent") === "on",
       targetAt: getFormValue(formData, "targetAt") || null,
       idempotencyKey: getFormValue(formData, "idempotencyKey") ?? "",

@@ -11,6 +11,15 @@ import type { TenantContext } from "@/modules/authorization";
 import { resolveEmployeeContext } from "@/modules/worker-context/employee-context.service";
 import { resolveCurrentProductionHandlingContextInTransaction } from "@/modules/scanning/handling-context.service";
 import { lockEmployeeForProductionMutation } from "@/modules/worker-context/production-context-lock";
+import {
+  mergeWorkflowTransitionMetadata,
+  resolveWorkflowStageForRole,
+  WorkflowStageSelectionRequiredError,
+} from "@/modules/workflows/server";
+import type {
+  ProductWorkflowDto,
+  ResolvedWorkflowStage,
+} from "@/modules/workflows/server";
 
 import {
   isProductLifecycleError,
@@ -25,6 +34,7 @@ import type {
   ProductLifecycleRoleDto,
   ProductLifecycleStatus,
   ProductLifecycleWorkerDto,
+  ReturnProductToProcessInput,
 } from "./product-lifecycle-types";
 
 const lifecycleInputSchema = z
@@ -34,6 +44,10 @@ const lifecycleInputSchema = z
     idempotencyKey: z.string().trim().min(1).max(255),
   })
   .strict();
+
+const returnToProcessInputSchema = lifecycleInputSchema.extend({
+  selectedWorkflowStageId: z.string().uuid().nullable().optional(),
+});
 
 const lifecycleStatusSchema = z.enum([
   ProductStatus.CREATED,
@@ -58,6 +72,27 @@ const lifecycleLocationSchema = z
     departmentId: z.string().uuid().nullable(),
   })
   .nullable();
+const lifecycleWorkflowStageSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  name: z.string(),
+  position: z.number().int().positive(),
+  productionRole: z
+    .object({ id: z.string().uuid(), code: z.string(), name: z.string() })
+    .nullable(),
+});
+const lifecycleWorkflowSchema = z
+  .object({
+    snapshotId: z.string().uuid(),
+    templateId: z.string().uuid().nullable(),
+    templateName: z.string().nullable(),
+    sourceVersion: z.number().int().positive().nullable(),
+    currentStage: lifecycleWorkflowStageSchema.nullable(),
+    expectedNextStage: lifecycleWorkflowStageSchema.nullable(),
+    stages: z.array(lifecycleWorkflowStageSchema),
+  })
+  .strict()
+  .nullable();
 
 const storedLifecycleResultSchema = z
   .object({
@@ -71,6 +106,9 @@ const storedLifecycleResultSchema = z
     completedAt: z.iso.datetime({ offset: true }).nullable(),
     cancelledAt: z.iso.datetime({ offset: true }).nullable(),
     trashedAt: z.iso.datetime({ offset: true }).nullable(),
+    workflow: lifecycleWorkflowSchema
+      .optional()
+      .transform((value) => value ?? null),
   })
   .strict();
 
@@ -92,6 +130,24 @@ const lifecycleProductSelect = Prisma.validator<Prisma.ProductSelect>()({
   currentLocation: {
     select: { id: true, code: true, name: true, departmentId: true },
   },
+  workflowSnapshot: {
+    select: {
+      id: true,
+      sourceTemplateId: true,
+      sourceVersion: true,
+      sourceTemplate: { select: { name: true } },
+      stages: {
+        orderBy: [{ position: "asc" }, { code: "asc" }],
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          position: true,
+          productionRole: { select: { id: true, code: true, name: true } },
+        },
+      },
+    },
+  },
 });
 
 type LifecycleProduct = Prisma.ProductGetPayload<{
@@ -107,6 +163,7 @@ type LifecycleMutationContext = {
 };
 
 type ParsedLifecycleInput = z.infer<typeof lifecycleInputSchema>;
+type ParsedReturnToProcessInput = z.infer<typeof returnToProcessInputSchema>;
 type LifecycleMutation = (
   database: Prisma.TransactionClient,
 ) => Promise<ProductLifecycleResultDto>;
@@ -127,9 +184,21 @@ function parseLifecycleInput(
   return parsed.data;
 }
 
+function parseReturnToProcessInput(
+  input: ReturnProductToProcessInput,
+): ParsedReturnToProcessInput {
+  const parsed = returnToProcessInputSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ProductLifecycleError(
+      PRODUCT_LIFECYCLE_ERROR_CODES.INVALID_LIFECYCLE_INPUT,
+    );
+  }
+  return parsed.data;
+}
+
 function hashLifecycleRequest(
   operation: ProductLifecycleOperation,
-  input: ParsedLifecycleInput,
+  input: ParsedLifecycleInput | ParsedReturnToProcessInput,
 ): string {
   return createHash("sha256")
     .update(
@@ -137,6 +206,9 @@ function hashLifecycleRequest(
         operation,
         productId: input.productId,
         expectedVersion: input.expectedVersion,
+        ...("selectedWorkflowStageId" in input && input.selectedWorkflowStageId
+          ? { selectedWorkflowStageId: input.selectedWorkflowStageId }
+          : {}),
       }),
     )
     .digest("hex");
@@ -273,6 +345,38 @@ function toLocationDto(
     : null;
 }
 
+function toProductWorkflowDto(
+  product: LifecycleProduct,
+): ProductWorkflowDto | null {
+  if (!product.workflowSnapshot) {
+    return null;
+  }
+
+  const stages = product.workflowSnapshot.stages.map((stage) => {
+    if (stage.position === null || stage.position <= 0) {
+      throw new ProductLifecycleError(
+        PRODUCT_LIFECYCLE_ERROR_CODES.LIFECYCLE_FAILED,
+      );
+    }
+    return { ...stage, position: stage.position };
+  });
+  const currentStage =
+    stages.find((stage) => stage.id === product.currentStageId) ?? null;
+  const expectedNextStage = currentStage
+    ? (stages.find((stage) => stage.position > currentStage.position) ?? null)
+    : (stages[0] ?? null);
+
+  return {
+    snapshotId: product.workflowSnapshot.id,
+    templateId: product.workflowSnapshot.sourceTemplateId,
+    templateName: product.workflowSnapshot.sourceTemplate?.name ?? null,
+    sourceVersion: product.workflowSnapshot.sourceVersion,
+    currentStage,
+    expectedNextStage,
+    stages,
+  };
+}
+
 function toLifecycleResult(
   product: LifecycleProduct,
 ): ProductLifecycleResultDto {
@@ -287,6 +391,7 @@ function toLifecycleResult(
     completedAt: product.completedAt?.toISOString() ?? null,
     cancelledAt: product.cancelledAt?.toISOString() ?? null,
     trashedAt: product.trashedAt?.toISOString() ?? null,
+    workflow: toProductWorkflowDto(product),
   };
 }
 
@@ -296,6 +401,7 @@ function lifecycleSnapshot(values: {
   workerId: string | null;
   roleId: string | null;
   locationId: string | null;
+  stageId?: string | null;
   completedAt?: Date | null;
   cancelledAt?: Date | null;
   trashedAt?: Date | null;
@@ -306,6 +412,7 @@ function lifecycleSnapshot(values: {
     workerId: values.workerId,
     roleId: values.roleId,
     locationId: values.locationId,
+    ...(values.stageId !== undefined ? { stageId: values.stageId } : {}),
     ...(values.completedAt !== undefined
       ? { completedAt: values.completedAt?.toISOString() ?? null }
       : {}),
@@ -442,6 +549,7 @@ export async function finishProduct(
         id: true,
         employeeId: true,
         productionRoleId: true,
+        workflowStageId: true,
       },
     });
 
@@ -454,7 +562,9 @@ export async function finishProduct(
     if (
       activeAssignment.employeeId !== product.currentWorkerId ||
       activeAssignment.employeeId !== employee.employeeId ||
-      activeAssignment.productionRoleId !== product.currentRoleId
+      activeAssignment.productionRoleId !== product.currentRoleId ||
+      (activeAssignment.workflowStageId !== null &&
+        activeAssignment.workflowStageId !== product.currentStageId)
     ) {
       throw new ProductLifecycleError(
         PRODUCT_LIFECYCLE_ERROR_CODES.ACTIVE_ASSIGNMENT_CONFLICT,
@@ -655,9 +765,9 @@ export async function completeProduct(
 }
 
 export async function returnCompletedProductToProcess(
-  input: ProductLifecycleInput,
+  input: ReturnProductToProcessInput,
 ): Promise<ProductLifecycleResultDto> {
-  const parsed = parseLifecycleInput(input);
+  const parsed = parseReturnToProcessInput(input);
   const tenant = await requirePermission("products.reopen");
   await requirePermission("scans.perform");
   const requestHash = hashLifecycleRequest(
@@ -681,15 +791,26 @@ export async function returnCompletedProductToProcess(
     operation: "products.return_to_process",
     requestHash,
   };
+  let prepared:
+    | {
+        currentContext: Awaited<
+          ReturnType<
+            typeof resolveCurrentProductionHandlingContextInTransaction
+          >
+        >;
+        workflow: ResolvedWorkflowStage;
+      }
+    | undefined;
 
   return executeLifecycleMutation(
     context,
     async (database) => {
-      const currentContext =
-        await resolveCurrentProductionHandlingContextInTransaction(
-          database,
-          tenant,
+      if (!prepared) {
+        throw new ProductLifecycleError(
+          PRODUCT_LIFECYCLE_ERROR_CODES.LIFECYCLE_FAILED,
         );
+      }
+      const { currentContext, workflow: resolvedWorkflow } = prepared;
       const product = await readProduct(
         database,
         tenant.organizationId,
@@ -725,6 +846,8 @@ export async function returnCompletedProductToProcess(
         );
       }
 
+      const nextStageId = resolvedWorkflow.stage?.id ?? product.currentStageId;
+
       const occurredAt = new Date();
       const updated = await database.product.updateMany({
         where: {
@@ -740,6 +863,7 @@ export async function returnCompletedProductToProcess(
           currentWorkerId: currentContext.employee.employeeId,
           currentRoleId: currentContext.productionRole.id,
           currentLocationId: currentContext.handlingLocation.id,
+          currentStageId: nextStageId,
           completedAt: null,
           version: { increment: 1 },
         },
@@ -757,7 +881,7 @@ export async function returnCompletedProductToProcess(
           employeeId: currentContext.employee.employeeId,
           productionRoleId: currentContext.productionRole.id,
           locationId: currentContext.handlingLocation.id,
-          workflowStageId: null,
+          workflowStageId: resolvedWorkflow.stage?.id ?? null,
           startedAt: occurredAt,
         },
       });
@@ -778,7 +902,11 @@ export async function returnCompletedProductToProcess(
           fromLocationId: product.currentLocationId,
           toLocationId: currentContext.handlingLocation.id,
           fromStageId: product.currentStageId,
-          toStageId: product.currentStageId,
+          toStageId: nextStageId,
+          metadata: mergeWorkflowTransitionMetadata(
+            null,
+            resolvedWorkflow.metadata,
+          ),
           occurredAt,
         },
       });
@@ -797,6 +925,7 @@ export async function returnCompletedProductToProcess(
             workerId: product.currentWorkerId,
             roleId: product.currentRoleId,
             locationId: product.currentLocationId,
+            stageId: product.currentStageId,
             completedAt: product.completedAt,
           }),
           afterData: lifecycleSnapshot({
@@ -805,6 +934,7 @@ export async function returnCompletedProductToProcess(
             workerId: currentContext.employee.employeeId,
             roleId: currentContext.productionRole.id,
             locationId: currentContext.handlingLocation.id,
+            stageId: nextStageId,
             completedAt: null,
           }),
         },
@@ -820,6 +950,54 @@ export async function returnCompletedProductToProcess(
         employee.organizationId,
         employee.employeeId,
       );
+      const currentContext =
+        await resolveCurrentProductionHandlingContextInTransaction(
+          database,
+          tenant,
+        );
+      const product = await readProduct(
+        database,
+        tenant.organizationId,
+        parsed.productId,
+      );
+      if (
+        product.version !== parsed.expectedVersion ||
+        product.status !== ProductStatus.COMPLETED ||
+        product.currentWorkerId !== null ||
+        product.currentRoleId !== null
+      ) {
+        throw new ProductLifecycleError(
+          product.version !== parsed.expectedVersion
+            ? PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_STATE_CHANGED
+            : PRODUCT_LIFECYCLE_ERROR_CODES.PRODUCT_NOT_REOPENABLE,
+        );
+      }
+      const activeAssignment = await database.productAssignment.findFirst({
+        where: {
+          organizationId: tenant.organizationId,
+          productId: product.id,
+          endedAt: null,
+        },
+        select: { id: true },
+      });
+      if (activeAssignment) {
+        throw new ProductLifecycleError(
+          PRODUCT_LIFECYCLE_ERROR_CODES.ACTIVE_ASSIGNMENT_CONFLICT,
+        );
+      }
+
+      const workflow = await resolveWorkflowStageForRole({
+        database,
+        organizationId: tenant.organizationId,
+        productId: product.id,
+        currentStageId: product.currentStageId,
+        productionRoleId: currentContext.productionRole.id,
+        selectedWorkflowStageId: parsed.selectedWorkflowStageId,
+      });
+      if (workflow.kind === "SELECTION_REQUIRED") {
+        throw new WorkflowStageSelectionRequiredError(workflow.selection);
+      }
+      prepared = { currentContext, workflow };
     },
   );
 }
@@ -1157,6 +1335,26 @@ export function trashProduct(
 
 export type ProductLifecyclePageData = {
   product: ProductLifecycleResultDto;
+  workflowHistory: readonly {
+    id: string;
+    eventType: string;
+    occurredAt: string;
+    fromStage: {
+      id: string;
+      code: string;
+      name: string;
+      position: number;
+    } | null;
+    toStage: {
+      id: string;
+      code: string;
+      name: string;
+      position: number;
+    } | null;
+    movement: string | null;
+    deviation: boolean;
+    isRework: boolean;
+  }[];
   canComplete: boolean;
   canCancel: boolean;
   canRestore: boolean;
@@ -1174,9 +1372,36 @@ export async function getProductLifecyclePageData(
     );
   }
 
-  const [product, canComplete, canCancel, canRestore, canTrash] =
+  const [product, transitions, canComplete, canCancel, canRestore, canTrash] =
     await Promise.all([
       readProduct(prisma, tenant.organizationId, parsedProductId.data),
+      prisma.productTransition.findMany({
+        where: {
+          organizationId: tenant.organizationId,
+          productId: parsedProductId.data,
+          eventType: {
+            in: [
+              "PRODUCT_RECEIVED",
+              "RESPONSIBILITY_TAKEN_OVER",
+              "PRODUCT_RETURNED_TO_PROCESS",
+              "WORK_FINISHED",
+            ],
+          },
+        },
+        orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          eventType: true,
+          occurredAt: true,
+          metadata: true,
+          fromStage: {
+            select: { id: true, code: true, name: true, position: true },
+          },
+          toStage: {
+            select: { id: true, code: true, name: true, position: true },
+          },
+        },
+      }),
       hasPermission("products.complete", tenant),
       hasPermission("products.cancel", tenant),
       hasPermission("products.restore", tenant),
@@ -1185,6 +1410,38 @@ export async function getProductLifecyclePageData(
 
   return {
     product: toLifecycleResult(product),
+    workflowHistory: transitions.map((transition) => {
+      const root =
+        transition.metadata &&
+        typeof transition.metadata === "object" &&
+        !Array.isArray(transition.metadata)
+          ? transition.metadata
+          : null;
+      const workflow =
+        root?.workflow &&
+        typeof root.workflow === "object" &&
+        !Array.isArray(root.workflow)
+          ? root.workflow
+          : null;
+      const toStage = (
+        stage: typeof transition.fromStage,
+      ): { id: string; code: string; name: string; position: number } | null =>
+        stage?.position && stage.position > 0
+          ? { ...stage, position: stage.position }
+          : null;
+
+      return {
+        id: transition.id,
+        eventType: transition.eventType,
+        occurredAt: transition.occurredAt.toISOString(),
+        fromStage: toStage(transition.fromStage),
+        toStage: toStage(transition.toStage),
+        movement:
+          typeof workflow?.movement === "string" ? workflow.movement : null,
+        deviation: workflow?.deviation === true,
+        isRework: workflow?.isRework === true,
+      };
+    }),
     canComplete,
     canCancel,
     canRestore,

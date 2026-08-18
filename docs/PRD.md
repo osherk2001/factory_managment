@@ -638,6 +638,10 @@ A WorkflowTemplate defines reusable production stages and allowed progression ru
 
 A Product receives a preserved WorkflowSnapshot so later template edits do not silently change Products already in production.
 
+WorkflowTemplate changes create immutable numbered versions. New Products may
+select an active tenant version; Products may also be created without a
+workflow. Snapshot stages are copied in the Product creation transaction.
+
 Workflow progression is not strictly forward-only.
 
 The system must support:
@@ -672,6 +676,11 @@ If the scan is otherwise valid and authorized:
 - the worker's selected `activeRole` is used
 - the corresponding stage is recorded
 - history must reflect the actual path the Product took
+
+If the active ProductionRole maps to multiple snapshot stages, the worker must
+choose one of the server-provided candidates before any mutation. If it maps to
+no stage, handling remains allowed, the prior current stage is preserved, and
+history marks the work as an unmapped deviation.
 
 ## Access roles vs production roles
 

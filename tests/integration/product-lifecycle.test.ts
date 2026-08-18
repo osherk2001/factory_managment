@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { randomUUID } from "node:crypto";
 
-import { ProductStatus } from "@prisma/client";
+import { Prisma, ProductStatus } from "@prisma/client";
 import type { Session } from "next-auth";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -244,12 +244,26 @@ describe.sequential("Phase 8 Product lifecycle actions", () => {
     ];
     await Promise.all(
       permissionCodes.map(async (code) => {
-        const permission = await prisma.permission.upsert({
-          where: { code },
-          update: {},
-          create: { code, description: `Phase 8 ${code}` },
-          select: { id: true },
-        });
+        let permission;
+        try {
+          permission = await prisma.permission.upsert({
+            where: { code },
+            update: {},
+            create: { code, description: `Phase 8 ${code}` },
+            select: { id: true },
+          });
+        } catch (error) {
+          if (
+            !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+            error.code !== "P2002"
+          ) {
+            throw error;
+          }
+          permission = await prisma.permission.findUniqueOrThrow({
+            where: { code },
+            select: { id: true },
+          });
+        }
         permissions.set(code, permission);
       }),
     );

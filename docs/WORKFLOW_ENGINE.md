@@ -1,185 +1,129 @@
-# WORKFLOW_ENGINE.md
+# Workflow engine
 
-## 1. Purpose
+## Purpose
 
-This document defines the workflow model used by FactoryFlow.
+FactoryFlow records both the configured production path and the path that a
+Product actually takes. Workflow is advisory: an otherwise valid handling
+action is not blocked merely because it differs from the expected next stage.
 
-The workflow engine must support real factory production without forcing every Product through a rigid linear sequence.
+## Immutable configuration
 
-## 2. Core concepts
+A `WorkflowTemplate` is one immutable, tenant-owned version of a named
+workflow. A template contains one or more ordered `WorkflowTemplateStage`
+records. Stage codes and positive positions must be unique within a version.
+A stage may map to one active `ProductionRole` in the same Organization or may
+remain unmapped.
 
-### WorkflowTemplate
+Templates are never edited or deleted through the application service. A
+change creates the next integer version under the same name. Creating or
+activating a version deactivates the other active versions with that tenant and
+name. Deactivation prevents future Product selection but does not affect
+existing Products.
 
-A reusable workflow configuration.
+Management requires `workflows.manage`. Product creation lists active versions
+for the authenticated tenant only.
 
-It defines:
+## Product snapshots
 
-- production stages
-- stage order or allowed paths
-- stage metadata
-- allowed movement rules
+Product creation may select one active WorkflowTemplate. In the same database
+transaction as Product, barcode, creation history, audit, and idempotency
+writes, FactoryFlow creates:
 
-A WorkflowTemplate is configuration and may change over time.
+- one `WorkflowSnapshot` linked to the Product and source version;
+- copied `WorkflowSnapshotStage` rows containing stage code, name, position,
+  source stage, and ProductionRole mapping.
 
-### WorkflowSnapshot
+Later template versions and activation changes cannot alter this snapshot.
+Products may also be created without a workflow; their existing lifecycle and
+idempotency behavior remains unchanged.
 
-A preserved workflow configuration assigned to a Product or production instance.
+## Expected stage
 
-Purpose:
+The expected stage is deliberately simple in Phase 9:
 
-- preserve the effective workflow used by the Product
-- prevent later template edits from silently changing Products already in production
-- make historical behavior understandable
+- before any mapped stage, the lowest-position snapshot stage is expected;
+- after a current stage, the next greater position is expected;
+- after the final stage, no next stage is expected.
 
-### ProductionStage
+This expectation describes a linear reference path. It does not prohibit
+forward skips, backward work, repeats, or work by an unmapped role.
 
-Represents one production step or handling stage.
+## ProductionRole-to-stage resolution
 
-A stage is a generic domain concept and must not be hard-coded to jewelry terminology.
+Receive, takeover, and return-to-process resolve the active ProductionRole
+against the Product snapshot inside the existing mutation transaction.
 
-Example stages for one factory may include:
+- No snapshot: no stage is recorded and existing null behavior is preserved.
+- No matching stage: the action succeeds, the new assignment stage is null,
+  and `Product.currentStageId` is preserved. History records `UNMAPPED`.
+- One matching stage: it is selected automatically.
+- Multiple matching stages: no Product, assignment, transition, audit, or
+  idempotency write occurs. The caller receives
+  `WORKFLOW_STAGE_SELECTION_REQUIRED` with safe candidate DTOs.
 
-- Casting
-- Cleaning
-- Stone Setting
-- Polishing
-- Quality Control
+An explicit selection must be a stage candidate from the same tenant, Product,
+snapshot, and active ProductionRole. Foreign, stale, arbitrary, or differently
+mapped IDs fail as `WORKFLOW_STAGE_NOT_AVAILABLE` without revealing whether a
+foreign record exists. The selected stage participates in the idempotency
+request hash.
 
-Other factories may define completely different stages.
+## Movement classification
 
-## 3. Movement model
+Each mapped or unmapped handling action is classified as:
 
-Workflow movement is not strictly linear.
+- `INITIAL`: first mapped stage;
+- `FORWARD`: a greater stage position, including allowed skips;
+- `BACKWARD`: a lower stage position;
+- `REPEAT`: the same stage again;
+- `UNMAPPED`: the active role has no snapshot-stage mapping.
 
-The engine must support:
+Backward and repeat movements are rework. A movement is a deviation when the
+actual stage differs from the expected stage. Unmapped work is always a
+deviation. Forward skips remain allowed and are recorded as deviations.
 
-- forward movement
-- backward movement
-- rework
-- repeated visits to the same stage
-- movement between different worker roles
-- non-blocking deviations from the expected next stage
+## Transition metadata and actual path
 
-Every actual movement is recorded historically.
+Receive, takeover, and return-to-process merge the following object under
+`ProductTransition.metadata.workflow`:
 
-A ProductTransition must preserve enough context to understand:
-
-- previous stage
-- next stage
-- previous worker
-- next worker
-- previous role
-- next role
-- previous location
-- next location
-- actor
-- timestamp
-- reason or context when required
-
-## 4. Worker active production role
-
-A worker may be allowed to perform more than one operational role.
-
-Before handling Products, the worker selects an `activeProductionRole` from the home screen.
-
-Rules:
-
-- the selected role is part of the worker's current working context
-- the selected role remains active until changed
-- the server validates that the worker is authorized for the role
-- if the worker has one role, the UI may select it automatically
-- if the worker has multiple roles, the UI provides explicit role selection
-- every new ProductAssignment records the active production role
-- relevant ProductTransitions record the active production role
-- historical assignments never change when the worker later selects another role
-
-## 5. Role to stage resolution
-
-The worker's selected `activeProductionRole` determines the production stage used for the current handling action.
-
-A worker may have multiple authorized operational roles.
-
-Example:
-
-```text
-Worker
-├── POLISHER
-└── STONE_SETTER
+```json
+{
+  "schemaVersion": 1,
+  "snapshotId": "uuid",
+  "movement": "FORWARD",
+  "expectedStageId": "uuid-or-null",
+  "actualStageId": "uuid-or-null",
+  "deviation": false,
+  "isRework": false
+}
 ```
 
-If the worker selects `POLISHER`, new ProductAssignments and relevant ProductTransitions are recorded under the polishing stage.
+`UNMAPPED` metadata additionally records `actualProductionRoleId`. Existing
+transition metadata is retained when workflow metadata is added.
 
-If the worker later selects `STONE_SETTER`, future handling actions are recorded under the stone-setting stage.
+The append-only `ProductTransition` sequence is the actual path. It is not
+reconstructed by rewriting snapshot stages or prior assignments.
 
-Rules:
+## Lifecycle boundaries
 
-- worker identity does not determine the stage by itself
-- the selected active production role determines the stage
-- one worker may have multiple roles
-- only one active production role is used for a single handling action
-- changing active production role affects future actions only
-- historical assignments retain the role and stage that were active when they were created
+Receive, takeover, and return-to-process resolve a stage. Finish does not
+resolve again: the active assignment's `workflowStageId` remains authoritative
+for that responsibility period, while `Product.currentStageId` is preserved
+and the Finish transition records stage-to-same-stage. Complete, cancel,
+restore, and trash also preserve the current stage.
 
+## Concurrency and idempotency
 
-## 6. Workflow enforcement policy
+Workflow resolution runs after authoritative worker role/location resolution
+and under the existing EmployeeProfile mutex. Product version compare-and-set
+and the one-active-assignment database constraint remain Product-level guards.
+Concurrent same-key requests replay the committed safe result. Ambiguous
+read-only results reserve no idempotency key, so a later explicit selection can
+use a fresh key.
 
-The workflow is used to describe and track the expected production path, but it does not block an otherwise valid worker receive scan solely because the worker's active production role is not the expected next stage.
+## Current limitations
 
-Example:
-
-```text
-Expected next stage: STONE_SETTING
-Worker activeProductionRole: POLISHER
-```
-
-If the worker is authorized to act as `POLISHER` and the Product can otherwise be received, the scan is allowed.
-
-The system records the actual handling stage as `POLISHER`.
-
-The actual Product path must remain visible in ProductTransition history.
-
-This policy keeps FactoryFlow focused on tracking real factory movement instead of forcing workers to follow a rigid digital sequence.
-
-
-## 7. Product workflow history
-
-Workflow history is append-only.
-
-A Product may visit the same stage multiple times.
-
-Therefore, the current stage must not be inferred only from a unique stage row.
-
-History must preserve each visit independently.
-
-Example:
-
-```text
-Stage A
-  ↓
-Stage B
-  ↓
-Stage C
-  ↓ rework
-Stage B
-  ↓
-Stage C
-```
-
-Both visits to Stage B and Stage C must remain visible.
-
-## 8. Template changes
-
-Changing a WorkflowTemplate must not rewrite the historical path of Products already in production.
-
-Products already assigned to a workflow use their preserved WorkflowSnapshot.
-
-A future product may receive the newer template version.
-
-## 9. Open decisions
-
-The following decisions are not finalized yet:
-
-- how the next allowed stage is calculated
-- whether managers can override stage restrictions
-- whether stage transitions require explicit reasons for backward movement
-- how stage completion interacts with Product status
+Phase 9 does not add branching graphs, conditional edges, manager overrides,
+required backward-movement reasons, workflow analytics, issues, weights, or
+automatic location inference. Those rules remain unresolved rather than being
+invented.

@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { defaultLocale, getMessages } from "@/lib/i18n";
 import { logoutAction } from "@/modules/auth/actions";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { requireAuthenticatedUser } from "@/modules/authorization/authorization.service";
 import { getTenantContext } from "@/modules/authorization/tenant-context";
+import { hasPermission } from "@/modules/authorization";
 
 const messages = getMessages(defaultLocale);
 
@@ -18,9 +20,14 @@ export default async function AppPage() {
 
   let organizationName: string | null = null;
   let organizationSelectionRequired = false;
+  let canManageWorkflows = false;
 
   try {
-    organizationName = (await getTenantContext())?.organizationName ?? null;
+    const tenant = await getTenantContext();
+    organizationName = tenant?.organizationName ?? null;
+    canManageWorkflows = tenant
+      ? await hasPermission("workflows.manage", tenant)
+      : false;
   } catch (error) {
     if (
       isFactoryFlowAuthError(error) &&
@@ -66,6 +73,15 @@ export default async function AppPage() {
             {messages.app.noOrganization}
           </p>
         )}
+
+        {canManageWorkflows ? (
+          <Link
+            className="inline-flex h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
+            href="/app/workflows"
+          >
+            {messages.workflows.title}
+          </Link>
+        ) : null}
       </section>
     </main>
   );
