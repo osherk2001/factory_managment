@@ -222,7 +222,7 @@ Phase 9 behavior is included.
 
 ## Phase 9 — Workflow engine
 
-Status: Implemented
+Status: Implemented / pending final hardening approval
 
 Implement:
 
@@ -242,9 +242,11 @@ resolution for receive/takeover/return-to-process, ambiguous-stage selection,
 movement/deviation/rework metadata, append-only actual-path visibility,
 management/Product/worker UI, deterministic development fixtures, and
 integration/E2E coverage. Existing Products without workflows remain
-supported. No database migration was required because the Phase 2 schema
-already contains the necessary workflow relations. Phase 10 issues and weights
-are not included.
+supported. Final hardening adds a PostgreSQL partial unique index for one active
+version per Organization and workflow name, safe activation/version
+concurrency handling, stale-stage confirmation protection, and deterministic
+workflow concurrency and ambiguous-selection tests. Phase 10 issues and
+weights are not included.
 
 ## Phase 10 — Issues and weights
 

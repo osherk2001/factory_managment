@@ -219,11 +219,13 @@ function hashRequest(input: object): string {
 
 function hashReceiveRequest(
   barcode: string,
+  expectedVersion?: number,
   selectedWorkflowStageId?: string | null,
 ): string {
   return hashRequest({
     barcode,
     intent: "receive",
+    ...(expectedVersion !== undefined ? { expectedVersion } : {}),
     ...(selectedWorkflowStageId ? { selectedWorkflowStageId } : {}),
   });
 }
@@ -678,6 +680,7 @@ async function receiveProduct(
   barcode: string,
   idempotencyKey: string,
   requestHash: string,
+  expectedVersion: number,
   selectedWorkflowStageId?: string | null,
 ) {
   if (
@@ -692,7 +695,7 @@ async function receiveProduct(
       context,
       barcode,
       product.status,
-      product.version,
+      expectedVersion,
       idempotencyKey,
       requestHash,
       selectedWorkflowStageId,
@@ -725,6 +728,7 @@ export async function scanProduct(
   const tenant = await requirePermission("scans.perform");
   const requestHash = hashReceiveRequest(
     parsed.barcode,
+    parsed.expectedVersion,
     parsed.selectedWorkflowStageId,
   );
   const replay = await findScanReplay(
@@ -748,6 +752,13 @@ export async function scanProduct(
     throw new WorkerScanError(SCAN_ERROR_CODES.BARCODE_NOT_FOUND);
   }
 
+  if (
+    parsed.selectedWorkflowStageId &&
+    product.version !== parsed.expectedVersion
+  ) {
+    throw productStateChangedError();
+  }
+
   switch (product.status) {
     case ProductStatus.CREATED:
     case ProductStatus.READY_FOR_HANDOFF:
@@ -757,6 +768,7 @@ export async function scanProduct(
         normalizeBarcode(parsed.barcode),
         parsed.idempotencyKey,
         requestHash,
+        parsed.expectedVersion ?? product.version,
         parsed.selectedWorkflowStageId,
       );
     case ProductStatus.IN_PROGRESS:

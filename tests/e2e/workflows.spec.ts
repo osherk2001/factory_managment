@@ -25,6 +25,9 @@ let locationId: string;
 let workflowTemplateId: string;
 let productId: string;
 let productBarcode: string;
+let ambiguousProductId: string;
+let ambiguousProductBarcode: string;
+let ambiguousStage4Id: string;
 
 async function login(page: Page, username: string) {
   await page.goto("/login");
@@ -192,6 +195,98 @@ test.describe.serial("Phase 9 workflow management and worker flow", () => {
         },
       ],
     });
+
+    const ambiguousFixture = await prisma.$transaction(async (database) => {
+      const template = await database.workflowTemplate.create({
+        data: {
+          organizationId,
+          name: `E2E Ambiguous Flow ${suffix}`,
+          version: 1,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      await database.workflowTemplateStage.createMany({
+        data: [
+          {
+            organizationId,
+            workflowTemplateId: template.id,
+            productionRoleId: firstRole.id,
+            code: "AMBIGUOUS_1",
+            name: "Ambiguous Stage 1",
+            position: 1,
+          },
+          {
+            organizationId,
+            workflowTemplateId: template.id,
+            productionRoleId: firstRole.id,
+            code: "AMBIGUOUS_4",
+            name: "Ambiguous Stage 4",
+            position: 4,
+          },
+        ],
+      });
+      const templateStages = await database.workflowTemplateStage.findMany({
+        where: { workflowTemplateId: template.id },
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          position: true,
+          productionRoleId: true,
+        },
+      });
+      const product = await database.product.create({
+        data: {
+          organizationId,
+          serialNumber: `E2E-WF-AMB-${suffix}`,
+          status: "CREATED",
+        },
+        select: { id: true },
+      });
+      const barcode = await database.barcode.create({
+        data: {
+          organizationId,
+          productId: product.id,
+          value: `e2e_workflow_ambiguous_${randomUUID()}`,
+        },
+        select: { value: true },
+      });
+      const snapshot = await database.workflowSnapshot.create({
+        data: {
+          organizationId,
+          productId: product.id,
+          sourceTemplateId: template.id,
+          sourceVersion: 1,
+        },
+        select: { id: true },
+      });
+      await database.workflowSnapshotStage.createMany({
+        data: templateStages.map((stage) => ({
+          organizationId,
+          workflowSnapshotId: snapshot.id,
+          productId: product.id,
+          productionRoleId: stage.productionRoleId,
+          sourceStageId: stage.id,
+          code: stage.code,
+          name: stage.name,
+          position: stage.position,
+        })),
+      });
+      const stage4 = await database.workflowSnapshotStage.findFirstOrThrow({
+        where: { workflowSnapshotId: snapshot.id, code: "AMBIGUOUS_4" },
+        select: { id: true },
+      });
+      return {
+        productId: product.id,
+        barcode: barcode.value,
+        stage4Id: stage4.id,
+      };
+    });
+    ambiguousProductId = ambiguousFixture.productId;
+    ambiguousProductBarcode = ambiguousFixture.barcode;
+    ambiguousStage4Id = ambiguousFixture.stage4Id;
   });
 
   test.afterAll(async () => {
@@ -327,5 +422,111 @@ test.describe.serial("Phase 9 workflow management and worker flow", () => {
       currentWorkerId: workerEmployeeId,
       currentStage: { code: "START" },
     });
+  });
+
+  test("keeps an ambiguous scan read-only until the worker selects a real stage", async ({
+    page,
+  }) => {
+    await login(page, workerUsername);
+    const idempotencyCountBefore = await prisma.idempotencyKey.count({
+      where: {
+        organizationId,
+        userId: workerUserId,
+        operation: "scans.receive",
+      },
+    });
+
+    await page.goto("/app/worker/scan");
+    await page.getByTestId("worker-scan-barcode").fill(ambiguousProductBarcode);
+    await page.getByTestId("worker-scan-submit").click();
+    await expect(page.getByTestId("workflow-stage-selection")).toBeVisible();
+    await expect(page.getByTestId("workflow-stage-option")).toHaveCount(2);
+    await expect(
+      page.getByRole("button", { name: /Ambiguous Stage 1/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Ambiguous Stage 4/ }),
+    ).toBeVisible();
+
+    await expect(
+      prisma.product.findUniqueOrThrow({
+        where: { id: ambiguousProductId },
+        select: {
+          status: true,
+          version: true,
+          currentWorkerId: true,
+          currentStageId: true,
+        },
+      }),
+    ).resolves.toEqual({
+      status: "CREATED",
+      version: 0,
+      currentWorkerId: null,
+      currentStageId: null,
+    });
+    await expect(
+      prisma.productAssignment.count({
+        where: { productId: ambiguousProductId, endedAt: null },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.productTransition.count({
+        where: {
+          productId: ambiguousProductId,
+          eventType: "PRODUCT_RECEIVED",
+        },
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      prisma.idempotencyKey.count({
+        where: {
+          organizationId,
+          userId: workerUserId,
+          operation: "scans.receive",
+        },
+      }),
+    ).resolves.toBe(idempotencyCountBefore);
+
+    await page.getByRole("button", { name: /Ambiguous Stage 4/ }).click();
+    await expect(page.getByTestId("scan-current-stage")).toHaveText(
+      "Ambiguous Stage 4",
+    );
+    await expect(
+      prisma.product.findUniqueOrThrow({
+        where: { id: ambiguousProductId },
+        select: {
+          status: true,
+          version: true,
+          currentWorkerId: true,
+          currentRoleId: true,
+          currentStageId: true,
+        },
+      }),
+    ).resolves.toEqual({
+      status: "IN_PROGRESS",
+      version: 1,
+      currentWorkerId: workerEmployeeId,
+      currentRoleId: firstRoleId,
+      currentStageId: ambiguousStage4Id,
+    });
+    await expect(
+      prisma.productAssignment.findMany({
+        where: { productId: ambiguousProductId, endedAt: null },
+        select: { productionRoleId: true, workflowStageId: true },
+      }),
+    ).resolves.toEqual([
+      { productionRoleId: firstRoleId, workflowStageId: ambiguousStage4Id },
+    ]);
+    await expect(
+      prisma.productTransition.findMany({
+        where: {
+          productId: ambiguousProductId,
+          eventType: "PRODUCT_RECEIVED",
+        },
+        select: { toRoleId: true, toStageId: true },
+      }),
+    ).resolves.toEqual([
+      { toRoleId: firstRoleId, toStageId: ambiguousStage4Id },
+    ]);
   });
 });

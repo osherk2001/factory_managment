@@ -20,6 +20,13 @@ activating a version deactivates the other active versions with that tenant and
 name. Deactivation prevents future Product selection but does not affect
 existing Products.
 
+PostgreSQL provides the final invariant with the partial unique index
+`workflow_template_one_active_version` on `(organizationId, name)` where
+`isActive = true`. Version creation and activation remain transactional. A
+concurrent duplicate-version, active-version, serialization, or deadlock
+collision rolls back the whole transaction and returns the typed
+`WORKFLOW_VERSION_CONFLICT`; raw Prisma and PostgreSQL errors are not exposed.
+
 Management requires `workflows.manage`. Product creation lists active versions
 for the authenticated tenant only.
 
@@ -65,7 +72,9 @@ An explicit selection must be a stage candidate from the same tenant, Product,
 snapshot, and active ProductionRole. Foreign, stale, arbitrary, or differently
 mapped IDs fail as `WORKFLOW_STAGE_NOT_AVAILABLE` without revealing whether a
 foreign record exists. The selected stage participates in the idempotency
-request hash.
+request hash. Receive confirmation also carries the Product version shown with
+the candidate list; if the Product changed before confirmation, the stale
+choice fails as a scan conflict without reserving an idempotency key.
 
 ## Movement classification
 
@@ -120,6 +129,11 @@ and the one-active-assignment database constraint remain Product-level guards.
 Concurrent same-key requests replay the committed safe result. Ambiguous
 read-only results reserve no idempotency key, so a later explicit selection can
 use a fresh key.
+
+The same mutex ordering guarantees that a role and workflow stage are resolved
+as one coherent pair: a role change that locks first determines the later scan,
+while a scan that locks first commits its original role and matching stage
+before the role change may complete.
 
 ## Current limitations
 

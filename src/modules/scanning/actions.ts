@@ -20,6 +20,14 @@ function getString(formData: FormData, name: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function getOptionalNumber(
+  formData: FormData,
+  name: string,
+): number | undefined {
+  const value = getString(formData, name);
+  return value === "" ? undefined : Number(value);
+}
+
 function getErrorState(
   previousState: WorkerScanActionState,
   error: unknown,
@@ -77,6 +85,7 @@ export async function scanProductAction(
     const result = await scanProduct({
       barcode: getString(formData, "barcode"),
       idempotencyKey: getString(formData, "idempotencyKey"),
+      expectedVersion: getOptionalNumber(formData, "expectedVersion"),
       selectedWorkflowStageId:
         getString(formData, "selectedWorkflowStageId") || null,
     });

@@ -108,6 +108,12 @@ Use:
 
 Do not rely only on application checks for critical invariants.
 
+WorkflowTemplate versions use a PostgreSQL partial unique index to permit at
+most one active row for each `(organizationId, name)` workflow family. Template
+version creation and activation deactivate/activate rows in one transaction;
+concurrent uniqueness, serialization, or deadlock collisions roll back and are
+returned as a safe workflow conflict rather than a raw database error.
+
 Worker production context is protected by both database and server checks. The
 database scopes `WorkerProductionContext` to the same Organization as its
 EmployeeProfile and optional ProductionRole. The server revalidates the active
@@ -216,7 +222,9 @@ the authoritative active ProductionRole resolved inside the transaction.
 Foreign and arbitrary IDs return the same unavailable error. Ambiguous
 resolution is read-only and does not reserve an idempotency key; explicit
 selections are included in receive, takeover, and return-to-process request
-hashes. Workflow configuration mutations require `workflows.manage`.
+hashes. A receive selection is also bound to the Product version shown when the
+choices were produced, so stale confirmation cannot mutate a newer Product
+state. Workflow configuration mutations require `workflows.manage`.
 
 ## 11. Rate limiting
 

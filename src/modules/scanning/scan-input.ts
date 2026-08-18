@@ -35,12 +35,27 @@ export function parseWorkerScanRequest(input: unknown): WorkerScanRequest {
   }
 
   const candidate = input as Record<string, unknown>;
+  const selectedWorkflowStageId = parseSelectedWorkflowStageId(
+    candidate.selectedWorkflowStageId,
+  );
+  const expectedVersion = z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .safeParse(candidate.expectedVersion);
+  if (
+    !expectedVersion.success ||
+    (selectedWorkflowStageId !== null && expectedVersion.data === undefined)
+  ) {
+    throw new WorkerScanError(SCAN_ERROR_CODES.INVALID_SCAN_INPUT);
+  }
+
   return {
     barcode: normalizeBarcode(candidate.barcode),
     idempotencyKey: parseIdempotencyKey(candidate.idempotencyKey),
-    selectedWorkflowStageId: parseSelectedWorkflowStageId(
-      candidate.selectedWorkflowStageId,
-    ),
+    expectedVersion: expectedVersion.data,
+    selectedWorkflowStageId,
   };
 }
 

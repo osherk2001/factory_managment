@@ -921,6 +921,15 @@ export async function seedDevelopmentFixtures(
       employeeProductionRoles += 1;
     }
 
+    await tx.workflowTemplate.updateMany({
+      where: {
+        organizationId: organization.id,
+        name: WORKFLOW_FIXTURE.name,
+        id: { not: WORKFLOW_FIXTURE.id },
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
     const workflowTemplate = await tx.workflowTemplate.upsert({
       where: {
         organizationId_name_version: {
@@ -929,7 +938,7 @@ export async function seedDevelopmentFixtures(
           version: WORKFLOW_FIXTURE.version,
         },
       },
-      update: {},
+      update: { isActive: true },
       create: {
         id: WORKFLOW_FIXTURE.id,
         organizationId: organization.id,

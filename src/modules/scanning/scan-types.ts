@@ -85,6 +85,7 @@ export type ScanWorkflowDto = {
 export type WorkerScanRequest = {
   barcode: string;
   idempotencyKey: string;
+  expectedVersion?: number;
   selectedWorkflowStageId?: string | null;
 };
 

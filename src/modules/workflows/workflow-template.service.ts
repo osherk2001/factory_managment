@@ -124,10 +124,10 @@ function toTemplateDto(template: TemplateRecord): WorkflowTemplateDto {
   };
 }
 
-function isUniqueError(error: unknown): boolean {
+function isWorkflowConcurrencyError(error: unknown): boolean {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2002"
+    (error.code === "P2002" || error.code === "P2034")
   );
 }
 
@@ -204,7 +204,7 @@ export async function createWorkflowTemplate(
     });
   } catch (error) {
     if (error instanceof WorkflowError) throw error;
-    if (isUniqueError(error)) {
+    if (isWorkflowConcurrencyError(error)) {
       throw new WorkflowError(WORKFLOW_ERROR_CODES.WORKFLOW_NAME_CONFLICT);
     }
     throw error;
@@ -277,7 +277,7 @@ export async function createWorkflowTemplateVersion(
     });
   } catch (error) {
     if (error instanceof WorkflowError) throw error;
-    if (isUniqueError(error)) {
+    if (isWorkflowConcurrencyError(error)) {
       throw new WorkflowError(WORKFLOW_ERROR_CODES.WORKFLOW_VERSION_CONFLICT);
     }
     throw error;
@@ -291,39 +291,47 @@ export async function setWorkflowTemplateActive(
   const context = await requirePermission("workflows.manage");
   const id = parseOrThrow(templateIdSchema.safeParse(workflowTemplateId));
 
-  return prisma.$transaction(async (database) => {
-    const existing = await database.workflowTemplate.findFirst({
-      where: { id, organizationId: context.organizationId },
-      select: { id: true, name: true },
-    });
-    if (!existing) {
-      throw new WorkflowError(WORKFLOW_ERROR_CODES.WORKFLOW_NOT_FOUND);
-    }
-
-    if (isActive) {
-      await database.workflowTemplate.updateMany({
-        where: {
-          organizationId: context.organizationId,
-          name: existing.name,
-          isActive: true,
-          id: { not: existing.id },
-        },
-        data: { isActive: false },
+  try {
+    return await prisma.$transaction(async (database) => {
+      const existing = await database.workflowTemplate.findFirst({
+        where: { id, organizationId: context.organizationId },
+        select: { id: true, name: true },
       });
-    }
-    const template = await database.workflowTemplate.update({
-      where: { id: existing.id },
-      data: { isActive },
-      select: templateSelect,
+      if (!existing) {
+        throw new WorkflowError(WORKFLOW_ERROR_CODES.WORKFLOW_NOT_FOUND);
+      }
+
+      if (isActive) {
+        await database.workflowTemplate.updateMany({
+          where: {
+            organizationId: context.organizationId,
+            name: existing.name,
+            isActive: true,
+            id: { not: existing.id },
+          },
+          data: { isActive: false },
+        });
+      }
+      const template = await database.workflowTemplate.update({
+        where: { id: existing.id },
+        data: { isActive },
+        select: templateSelect,
+      });
+      await writeAudit(
+        database,
+        context,
+        isActive ? "workflow.activated" : "workflow.deactivated",
+        template,
+      );
+      return toTemplateDto(template);
     });
-    await writeAudit(
-      database,
-      context,
-      isActive ? "workflow.activated" : "workflow.deactivated",
-      template,
-    );
-    return toTemplateDto(template);
-  });
+  } catch (error) {
+    if (error instanceof WorkflowError) throw error;
+    if (isWorkflowConcurrencyError(error)) {
+      throw new WorkflowError(WORKFLOW_ERROR_CODES.WORKFLOW_VERSION_CONFLICT);
+    }
+    throw error;
+  }
 }
 
 export async function listWorkflowTemplates(): Promise<

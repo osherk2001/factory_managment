@@ -672,7 +672,13 @@ Constraints:
 
 ```text
 UNIQUE(organizationId, name, version)
+UNIQUE(organizationId, name) WHERE isActive = true
 ```
+
+The active-version invariant is PostgreSQL-specific and is enforced by the
+partial unique index `workflow_template_one_active_version`. Prisma must not
+model it as an unconditional `@@unique`, because historical inactive versions
+with the same Organization and name are valid.
 
 ## WorkflowTemplateStage
 
@@ -698,8 +704,9 @@ UNIQUE(workflowTemplateId, code)
 
 `position` is advisory and does not mean the workflow is strictly linear.
 Phase 9 application validation requires positive, unique positions and unique
-codes within each immutable template version. The existing database schema is
-unchanged; no Phase 9 migration is required.
+codes within each immutable template version. Phase 9 final hardening adds one
+migration for the PostgreSQL partial unique active-version index; it adds no
+table, column, enum, or Prisma `@@unique` declaration.
 
 ## WorkflowSnapshot
 

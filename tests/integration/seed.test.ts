@@ -94,6 +94,15 @@ describe.sequential("Phase 3 development fixtures", () => {
       }),
     ).resolves.toBe(1);
     await expect(
+      prisma.workflowTemplate.count({
+        where: {
+          organizationId: organization.id,
+          name: "Standard Production Flow",
+          isActive: true,
+        },
+      }),
+    ).resolves.toBe(1);
+    await expect(
       prisma.workflowTemplateStage.count({
         where: {
           organizationId: organization.id,

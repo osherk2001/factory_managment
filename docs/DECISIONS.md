@@ -1090,6 +1090,25 @@ classified as `INITIAL`, `FORWARD`, `BACKWARD`, `REPEAT`, or `UNMAPPED`.
 Backward and repeat are rework; differences from the expected stage are
 non-blocking deviations stored under versioned workflow metadata.
 
+---
+
+### D-057: A logical workflow has at most one active template version
+
+Status: Approved
+
+Decision:
+
+For one Organization and workflow name, at most one `WorkflowTemplate` version
+may have `isActive = true`. PostgreSQL enforces this with the partial unique
+index `workflow_template_one_active_version` on `(organizationId, name)` where
+`isActive = true`; this is intentionally not represented as an unconditional
+Prisma `@@unique` declaration.
+
+Version creation and activation remain transactional. A concurrent version or
+activation collision rolls back all changes and returns a safe typed workflow
+conflict. Existing Product snapshots and historical inactive versions are not
+changed by this invariant.
+
 ## Pending decisions
 
 The following still require product decisions before implementation:
