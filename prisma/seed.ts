@@ -12,35 +12,8 @@ export const DEVELOPMENT_ORGANIZATION = {
 
 export const DEVELOPMENT_ORGANIZATION_SLUG = DEVELOPMENT_ORGANIZATION.slug;
 
-export const PERMISSION_CODES = [
-  "products.create",
-  "products.read",
-  "products.update",
-  "products.complete",
-  "products.reopen",
-  "products.cancel",
-  "products.restore",
-  "products.trash",
-  "barcodes.print",
-  "barcodes.reprint",
-  "scans.perform",
-  "scans.takeover",
-  "locations.transfer",
-  "issues.create",
-  "issues.read",
-  "issues.resolve",
-  "weights.read",
-  "weights.create",
-  "weights.correct",
-  "users.manage",
-  "access_roles.manage",
-  "permissions.manage",
-  "production_roles.manage",
-  "locations.manage",
-  "workflows.manage",
-  "audit.read",
-  "reports.export",
-] as const;
+import { PERMISSION_CODES } from "../src/modules/authorization/permissions";
+export { PERMISSION_CODES };
 
 type PermissionCode = (typeof PERMISSION_CODES)[number];
 type AccessRoleCode =

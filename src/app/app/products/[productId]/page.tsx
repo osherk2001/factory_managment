@@ -1,3 +1,5 @@
+
+import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
 import { defaultLocale, getMessages } from "@/lib/i18n";
@@ -7,10 +9,12 @@ import { getProductLifecyclePageData } from "@/modules/products/server";
 import type { ProductLifecyclePageData } from "@/modules/products/product-lifecycle.service";
 
 import { ProductLifecycleControls } from "@/modules/products/product-lifecycle-controls";
+import { inspectProduct } from "@/modules/products/product-inspection.service";
+import { ProductInspection } from "@/modules/products/product-inspection";
 
-const messages = getMessages(defaultLocale);
 
-function formatTimestamp(value: string | null): string {
+
+function formatTimestamp(messages: ReturnType<typeof getMessages>, value: string | null): string {
   return value
     ? new Date(value).toLocaleString(defaultLocale)
     : messages.products.notSet;
@@ -18,9 +22,12 @@ function formatTimestamp(value: string | null): string {
 
 export default async function ProductDetailsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ productId: string }>;
+  searchParams: Promise<{ historyPage?: string }>;
 }) {
+  const messages = await getRequestMessages();
   const { productId } = await params;
   let data: ProductLifecyclePageData;
   try {
@@ -39,6 +46,7 @@ export default async function ProductDetailsPage({
   }
 
   const { product } = data;
+  const inspection = await inspectProduct(productId, Number((await searchParams).historyPage ?? 1));
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 sm:py-12">
       <section className="mx-auto w-full max-w-2xl space-y-6">
@@ -96,19 +104,19 @@ export default async function ProductDetailsPage({
               <dt className="font-medium text-muted-foreground">
                 {messages.products.completedAt}
               </dt>
-              <dd>{formatTimestamp(product.completedAt)}</dd>
+              <dd>{formatTimestamp(messages, product.completedAt)}</dd>
             </div>
             <div>
               <dt className="font-medium text-muted-foreground">
                 {messages.products.cancelledAt}
               </dt>
-              <dd>{formatTimestamp(product.cancelledAt)}</dd>
+              <dd>{formatTimestamp(messages, product.cancelledAt)}</dd>
             </div>
             <div>
               <dt className="font-medium text-muted-foreground">
                 {messages.products.trashedAt}
               </dt>
-              <dd>{formatTimestamp(product.trashedAt)}</dd>
+              <dd>{formatTimestamp(messages, product.trashedAt)}</dd>
             </div>
           </dl>
         </section>
@@ -189,6 +197,7 @@ export default async function ProductDetailsPage({
         ) : null}
 
         <ProductLifecycleControls data={data} />
+        <ProductInspection data={inspection} />
       </section>
     </main>
   );

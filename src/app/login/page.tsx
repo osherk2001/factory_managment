@@ -1,15 +1,19 @@
+
+import { getRequestMessages } from "@/lib/i18n/server";
 import type { Metadata } from "next";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
 import { LoginForm } from "@/modules/auth/login-form";
+import { LanguagePicker } from "@/components/language-picker";
 
-const messages = getMessages(defaultLocale);
 
-export const metadata: Metadata = {
-  title: `${messages.auth.title} · FactoryFlow`,
-};
 
-export default function LoginPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const messages = await getRequestMessages();
+  return { title: `${messages.auth.title} · ${messages.app.title}` };
+}
+
+export default async function LoginPage() {
+  const messages = await getRequestMessages();
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
       <section className="w-full max-w-md space-y-8 rounded-xl border bg-white p-8 shadow-sm">
@@ -22,6 +26,7 @@ export default function LoginPage() {
           </h1>
         </div>
         <LoginForm />
+        <LanguagePicker />
       </section>
     </main>
   );

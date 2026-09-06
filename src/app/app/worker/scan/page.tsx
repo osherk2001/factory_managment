@@ -1,6 +1,7 @@
+
+import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { getWorkerScanPageData } from "@/modules/scanning/server";
 import {
@@ -15,9 +16,10 @@ import type { ActiveProductionHandlingContextDto } from "@/modules/scanning/scan
 
 import { WorkerScanPage } from "@/modules/scanning/worker-scan";
 
-const messages = getMessages(defaultLocale);
+
 
 export default async function WorkerScanRoute() {
+  const messages = await getRequestMessages();
   let scanData: ActiveProductionHandlingContextDto | undefined;
 
   try {

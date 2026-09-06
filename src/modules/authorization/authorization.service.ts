@@ -9,6 +9,7 @@ import type { AuthenticatedUserContext } from "./authorization.types";
 
 async function findUserContextById(
   userId: string,
+  sessionVersion?: number,
 ): Promise<AuthenticatedUserContext | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -17,10 +18,11 @@ async function findUserContextById(
       username: true,
       isActive: true,
       isSystemAdmin: true,
+      sessionVersion: true,
     },
   });
 
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || (sessionVersion !== undefined && user.sessionVersion !== sessionVersion)) {
     return null;
   }
 
@@ -40,7 +42,7 @@ export async function getCurrentUser(): Promise<AuthenticatedUserContext | null>
     return null;
   }
 
-  return findUserContextById(userId);
+  return findUserContextById(userId, session?.user?.sessionVersion ?? 0);
 }
 
 export async function getUserContextById(
@@ -68,10 +70,11 @@ export async function requireAuthenticatedUser(): Promise<AuthenticatedUserConte
       username: true,
       isActive: true,
       isSystemAdmin: true,
+      sessionVersion: true,
     },
   });
 
-  if (!user) {
+  if (!user || user.sessionVersion !== (session?.user?.sessionVersion ?? 0)) {
     logger.warn(
       { event: "authorization_denied", reason: "UNAUTHENTICATED" },
       "Authenticated user no longer exists",

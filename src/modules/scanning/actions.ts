@@ -1,6 +1,7 @@
 "use server";
 
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
+import { RateLimitError } from "@/lib/security/rate-limit";
 import {
   finishProduct,
   returnCompletedProductToProcess,
@@ -32,6 +33,7 @@ function getErrorState(
   previousState: WorkerScanActionState,
   error: unknown,
 ): WorkerScanActionState {
+  if (error instanceof RateLimitError) return { ...previousState, result: null, lifecycleResult: null, workflowSelection: null, errorCode: "RATE_LIMITED" };
   if (isWorkflowStageSelectionRequiredError(error)) {
     return {
       ...previousState,

@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@media print {
+  body * { visibility: hidden; }
+  #barcode-label, #barcode-label * { visibility: visible; }
+  #barcode-label { position: absolute; inset: 0 auto auto 0; }
+}
+
 @layer base {
   :root {
     --background: 210 40% 98%;

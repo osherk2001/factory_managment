@@ -1,8 +1,9 @@
+
+import { getRequestMessages } from "@/lib/i18n/server";
 import { randomUUID } from "node:crypto";
 
 import { notFound, redirect } from "next/navigation";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
 import { prisma } from "@/lib/db/client";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { requirePermission } from "@/modules/authorization/permission.service";
@@ -10,9 +11,10 @@ import { requirePermission } from "@/modules/authorization/permission.service";
 import { ProductCreationForm } from "@/modules/products/product-form";
 import { listActiveWorkflowTemplatesForOrganization } from "@/modules/workflows/server";
 
-const messages = getMessages(defaultLocale);
+
 
 export default async function NewProductPage() {
+  const messages = await getRequestMessages();
   let context;
   try {
     context = await requirePermission("products.create");

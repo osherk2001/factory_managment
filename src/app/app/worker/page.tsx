@@ -1,6 +1,7 @@
+
+import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { getWorkerHomeData } from "@/modules/worker-context/server";
 import {
@@ -11,9 +12,10 @@ import type { WorkerHomeData } from "@/modules/worker-context";
 
 import { WorkerHome } from "@/modules/worker-context/worker-home";
 
-const messages = getMessages(defaultLocale);
+
 
 export default async function WorkerPage() {
+  const messages = await getRequestMessages();
   let workerData: WorkerHomeData | undefined;
   let workerUnavailableMessage: string | undefined;
 

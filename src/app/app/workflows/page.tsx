@@ -1,15 +1,17 @@
+
+import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
 import { prisma } from "@/lib/db/client";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { requirePermission } from "@/modules/authorization";
 import { listWorkflowTemplates } from "@/modules/workflows/server";
 import { WorkflowManagement } from "@/modules/workflows/workflow-management";
 
-const messages = getMessages(defaultLocale);
+
 
 export default async function WorkflowsPage() {
+  const messages = await getRequestMessages();
   let context;
   try {
     context = await requirePermission("workflows.manage");

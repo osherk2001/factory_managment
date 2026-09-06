@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
 import { logger } from "@/lib/logging/logger";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 
 import { passwordSchema, verifyPassword } from "./password";
 
@@ -15,6 +16,7 @@ export const credentialsSchema = z.object({
 export type AuthenticatedCredentialsUser = {
   id: string;
   username: string;
+  sessionVersion: number;
 };
 
 export async function authenticateCredentials(
@@ -30,6 +32,13 @@ export async function authenticateCredentials(
     return null;
   }
 
+  try {
+    await consumeRateLimit("login-account", parsedCredentials.data.username.toLowerCase(), 10, 15 * 60000);
+    await consumeRateLimit("login-global", "credentials", 300, 60000);
+  } catch {
+    logger.warn({ event: "login_throttled" }, "Login unavailable or throttled");
+    return null;
+  }
   const user = await prisma.user.findUnique({
     where: { username: parsedCredentials.data.username },
     select: {
@@ -37,6 +46,7 @@ export async function authenticateCredentials(
       username: true,
       passwordHash: true,
       isActive: true,
+      sessionVersion: true,
     },
   });
 
@@ -57,5 +67,5 @@ export async function authenticateCredentials(
 
   logger.info({ event: "login_succeeded", userId: user.id }, "Login succeeded");
 
-  return { id: user.id, username: user.username };
+  return { id: user.id, username: user.username, sessionVersion: user.sessionVersion };
 }

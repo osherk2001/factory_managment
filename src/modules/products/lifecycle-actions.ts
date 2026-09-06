@@ -1,6 +1,7 @@
 "use server";
 
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
+import { RateLimitError } from "@/lib/security/rate-limit";
 import { isWorkerContextError } from "@/modules/worker-context";
 
 import {
@@ -47,6 +48,7 @@ function errorState(
   previousState: ProductLifecycleActionState,
   error: unknown,
 ): ProductLifecycleActionState {
+  if (error instanceof RateLimitError) return { result: null, operation: previousState.operation, errorCode: "RATE_LIMITED" };
   if (isProductLifecycleError(error)) {
     return {
       result: null,

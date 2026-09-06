@@ -1,4 +1,6 @@
 "use client";
+import { useMessages } from "@/lib/i18n/client";
+
 
 import {
   useActionState,
@@ -7,8 +9,6 @@ import {
   type FormEvent,
   type MouseEvent,
 } from "react";
-
-import { defaultLocale, getMessages } from "@/lib/i18n";
 
 import { createProductAction } from "./actions";
 import { normalizeProductTargetAt } from "./product-date";
@@ -23,7 +23,7 @@ type ProductCreationFormProps = {
   workflows: readonly ProductOption[];
 };
 
-const messages = getMessages(defaultLocale);
+
 
 export function ProductCreationForm({
   initialIdempotencyKey,
@@ -31,6 +31,7 @@ export function ProductCreationForm({
   productTypes,
   workflows,
 }: ProductCreationFormProps) {
+  const messages = useMessages();
   const idempotencyKey = useRef(initialIdempotencyKey);
   const targetAtUtcInput = useRef<HTMLInputElement>(null);
   const [state, formAction, isSubmitting] = useActionState(

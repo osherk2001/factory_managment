@@ -17,7 +17,7 @@ export async function resolveTenantContextForUser(
 ): Promise<TenantContextResolution> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, isActive: true },
+    select: { id: true, isActive: true, selectedOrganizationId: true },
   });
 
   if (!user) {
@@ -58,6 +58,8 @@ export async function resolveTenantContextForUser(
   }
 
   if (activeMemberships.length > 1) {
+    const selected = activeMemberships.find(m => m.organizationId === user.selectedOrganizationId);
+    if (selected) return { kind: "resolved", context: { ...selected, userId } };
     return {
       kind: "selection-required",
       userId,

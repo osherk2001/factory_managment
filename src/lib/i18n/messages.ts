@@ -1,3 +1,5 @@
+import { operations } from "./operations";
+
 export const locales = ["he", "en", "ru"] as const;
 
 export type Locale = (typeof locales)[number];
@@ -602,5 +604,5 @@ const messages = {
 } as const;
 
 export function getMessages(locale: Locale = defaultLocale) {
-  return messages[locale];
+  return { ...messages[locale], operations: operations[locale] };
 }

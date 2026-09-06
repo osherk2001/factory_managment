@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 import { defaultLocale, getMessages } from "@/lib/i18n";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { LocaleProvider } from "@/lib/i18n/client";
 
 import "./globals.css";
 
@@ -11,12 +13,13 @@ export const metadata: Metadata = {
   description: messages.metadata.description,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getRequestLocale();
   return (
-    <html lang={defaultLocale} dir="rtl">
-      <body>{children}</body>
+    <html lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
+      <body><LocaleProvider locale={locale}>{children}</LocaleProvider></body>
     </html>
   );
 }

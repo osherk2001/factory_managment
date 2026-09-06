@@ -1,4 +1,6 @@
 "use client";
+import { useMessages } from "@/lib/i18n/client";
+
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,18 +21,19 @@ import {
 } from "./worker-action-types";
 import type { WorkerHomeData, WorkerProductDto } from "./worker-context.types";
 
-const messages = getMessages(defaultLocale);
 
-function formatTargetAt(targetAt: string | null): string {
+
+function formatTargetAt(messages: ReturnType<typeof getMessages>, targetAt: string | null): string {
   return targetAt
     ? new Date(targetAt).toLocaleString(defaultLocale)
     : messages.worker.notSet;
 }
 
-function finishProductErrorMessage(
+function finishProductErrorMessage(messages: ReturnType<typeof getMessages>, 
   errorCode: ProductLifecycleActionState["errorCode"],
 ): string | null {
   switch (errorCode) {
+    case "RATE_LIMITED": return messages.operations.errors.RATE_LIMITED;
     case "PRODUCT_STATE_CHANGED":
       return messages.worker.productStateChanged;
     case "FORBIDDEN":
@@ -49,13 +52,14 @@ function finishProductErrorMessage(
 }
 
 function FinishProductForm({ product }: { product: WorkerProductDto }) {
+  const messages = useMessages();
   const router = useRouter();
   const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
   const [state, formAction, isSubmitting] = useActionState(
     finishProductAction,
     initialProductLifecycleActionState,
   );
-  const errorMessage = finishProductErrorMessage(state.errorCode);
+  const errorMessage = finishProductErrorMessage(messages, state.errorCode);
 
   useEffect(() => {
     if (state.result) {
@@ -107,7 +111,7 @@ function FinishProductForm({ product }: { product: WorkerProductDto }) {
   );
 }
 
-function roleSelectionError(
+function roleSelectionError(messages: ReturnType<typeof getMessages>, 
   errorCode: WorkerRoleSelectionActionState["errorCode"],
 ): string | null {
   if (!errorCode) {
@@ -126,6 +130,7 @@ function roleSelectionError(
 }
 
 function WorkerProductCard({ product }: { product: WorkerProductDto }) {
+  const messages = useMessages();
   return (
     <article
       className="space-y-4 rounded-xl border bg-white p-5 shadow-sm"
@@ -155,7 +160,7 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
           <dt className="font-medium text-muted-foreground">
             {messages.worker.targetDate}
           </dt>
-          <dd>{formatTargetAt(product.targetAt)}</dd>
+          <dd>{formatTargetAt(messages, product.targetAt)}</dd>
         </div>
         <div>
           <dt className="font-medium text-muted-foreground">
@@ -220,6 +225,7 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
 }
 
 function RoleSelection({ data }: { data: WorkerHomeData }) {
+  const messages = useMessages();
   const [state, formAction, isSubmitting] = useActionState(
     selectActiveProductionRoleAction,
     {
@@ -228,7 +234,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         data.productionRoleState.activeProductionRole?.id ?? null,
     },
   );
-  const errorMessage = roleSelectionError(state.errorCode);
+  const errorMessage = roleSelectionError(messages, state.errorCode);
   const activeRoleId =
     state.activeProductionRoleId ??
     data.productionRoleState.activeProductionRole?.id ??
@@ -303,6 +309,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
 }
 
 export function WorkerHome({ data }: { data: WorkerHomeData }) {
+  const messages = useMessages();
   const roleState = data.productionRoleState;
 
   return (

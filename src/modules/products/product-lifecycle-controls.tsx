@@ -1,10 +1,12 @@
 "use client";
+import { useMessages } from "@/lib/i18n/client";
+
 
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
+import { getMessages } from "@/lib/i18n";
 
 import { productLifecycleAction } from "./lifecycle-actions";
 import {
@@ -17,12 +19,13 @@ import type {
 } from "./product-lifecycle-types";
 import type { ProductLifecyclePageData } from "./product-lifecycle.service";
 
-const messages = getMessages(defaultLocale);
 
-function errorMessage(
+
+function errorMessage(messages: ReturnType<typeof getMessages>, 
   errorCode: ProductLifecycleActionState["errorCode"],
 ): string | null {
   switch (errorCode) {
+    case "RATE_LIMITED": return messages.operations.errors.RATE_LIMITED;
     case "FORBIDDEN":
       return messages.products.notAuthorized;
     case "UNAUTHORIZED":
@@ -44,7 +47,7 @@ function errorMessage(
   }
 }
 
-function successMessage(operation: ProductLifecycleOperation | null): string {
+function successMessage(messages: ReturnType<typeof getMessages>, operation: ProductLifecycleOperation | null): string {
   switch (operation) {
     case "products.complete":
       return messages.products.productCompleted;
@@ -110,13 +113,14 @@ export function ProductLifecycleControls({
 }: {
   data: ProductLifecyclePageData;
 }) {
+  const messages = useMessages();
   const router = useRouter();
   const [state, formAction, isSubmitting] = useActionState(
     productLifecycleAction,
     initialProductLifecycleActionState,
   );
   const product = data.product;
-  const error = errorMessage(state.errorCode);
+  const error = errorMessage(messages, state.errorCode);
 
   useEffect(() => {
     if (state.result) {
@@ -129,7 +133,7 @@ export function ProductLifecycleControls({
       <h2 className="text-xl font-semibold">{messages.products.actions}</h2>
       {state.result ? (
         <p aria-live="polite" data-testid="lifecycle-success">
-          {successMessage(state.operation)}
+          {successMessage(messages, state.operation)}
         </p>
       ) : null}
       {error ? (

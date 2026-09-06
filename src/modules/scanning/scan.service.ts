@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
+import { limitProductionRequest } from "@/lib/security/rate-limit";
 import { requirePermission, type TenantContext } from "@/modules/authorization";
 import { lockEmployeeForProductionMutation } from "@/modules/worker-context/production-context-lock";
 import {
@@ -726,6 +727,7 @@ export async function scanProduct(
 ): Promise<WorkerScanResult> {
   const parsed = parseWorkerScanRequest(input);
   const tenant = await requirePermission("scans.perform");
+  await limitProductionRequest(tenant);
   const requestHash = hashReceiveRequest(
     parsed.barcode,
     parsed.expectedVersion,
@@ -1043,6 +1045,7 @@ export async function takeOverProduct(
   const parsed = parseWorkerTakeoverRequest(input);
   const tenant = await requirePermission("scans.perform");
   await requirePermission("scans.takeover");
+  await limitProductionRequest(tenant);
   const requestHash = hashTakeoverRequest(
     parsed.barcode,
     parsed.expectedVersion,

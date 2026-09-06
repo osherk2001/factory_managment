@@ -1,8 +1,10 @@
 "use client";
+import { useMessages } from "@/lib/i18n/client";
+
 
 import { useActionState, useState } from "react";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
+import { getMessages } from "@/lib/i18n";
 
 import { workflowAction } from "./actions";
 import {
@@ -20,7 +22,7 @@ type EditableStage = {
   productionRoleId: string;
 };
 
-const messages = getMessages(defaultLocale);
+
 
 function newStage(position: number): EditableStage {
   return {
@@ -32,7 +34,7 @@ function newStage(position: number): EditableStage {
   };
 }
 
-function workflowError(state: WorkflowActionState): string | null {
+function workflowError(messages: ReturnType<typeof getMessages>, state: WorkflowActionState): string | null {
   if (!state.errorCode) return null;
   if (state.errorCode === "FORBIDDEN" || state.errorCode === "UNAUTHORIZED") {
     return messages.workflows.unauthorized;
@@ -47,13 +49,14 @@ export function WorkflowManagement({
   roles: readonly RoleOption[];
   templates: readonly WorkflowTemplateDto[];
 }) {
+  const messages = useMessages();
   const [state, formAction, isSubmitting] = useActionState(
     workflowAction,
     initialWorkflowActionState,
   );
   const [mode, setMode] = useState<"create" | "version">("create");
   const [stages, setStages] = useState<EditableStage[]>([newStage(1)]);
-  const error = workflowError(state);
+  const error = workflowError(messages, state);
 
   function updateStage(
     clientId: string,

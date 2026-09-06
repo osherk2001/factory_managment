@@ -21,6 +21,7 @@ export type WorkerScanActionState = {
     | WorkflowErrorCode
     | "FORBIDDEN"
     | "UNAUTHORIZED"
+    | "RATE_LIMITED"
     | null;
 };
 

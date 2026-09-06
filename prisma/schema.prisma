@@ -90,6 +90,7 @@ model Organization {
   weightEvents            WeightEvent[]
   auditLogs               AuditLog[]
   idempotencyKeys         IdempotencyKey[]
+  rateLimitBuckets        RateLimitBucket[]
   membershipAccessRoles   MembershipAccessRole[]
   employeeProductionRoles EmployeeProductionRole[]
   workerProductionContexts WorkerProductionContext[]
@@ -102,6 +103,9 @@ model User {
   passwordHash  String?  @db.VarChar(255)
   isActive      Boolean  @default(true)
   isSystemAdmin Boolean  @default(false)
+  sessionVersion Int     @default(0)
+  preferredLocale String @default("he") @db.VarChar(2)
+  selectedOrganizationId String? @db.Uuid
   createdAt     DateTime @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @db.Timestamptz(6)
 
@@ -312,6 +316,7 @@ model Location {
   employeeProductionRoleLinks EmployeeProductionRole[]
   transitionsFrom ProductTransition[] @relation("ProductTransitionFromLocations")
   transitionsTo   ProductTransition[] @relation("ProductTransitionToLocations")
+  weightEvents    WeightEvent[]
 
   @@unique([organizationId, code])
   @@unique([organizationId, id])
@@ -613,6 +618,7 @@ model Issue {
   status                 IssueStatus
   createdAt              DateTime    @default(now()) @db.Timestamptz(6)
   resolvedAt             DateTime?   @db.Timestamptz(6)
+  resolution             String?     @db.Text
 
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   product        Product      @relation(fields: [organizationId, productId], references: [organizationId, id], onDelete: Restrict)
@@ -633,6 +639,8 @@ model WeightEvent {
   recordedByMembershipId String         @db.Uuid
   employeeId            String?         @db.Uuid
   productionRoleId      String?         @db.Uuid
+  locationId            String?         @db.Uuid
+  correctsWeightEventId  String?         @db.Uuid
   type                  WeightEventType
   grams                 Decimal         @db.Decimal(10, 3)
   note                  String?         @db.Text
@@ -645,9 +653,16 @@ model WeightEvent {
   recordedByMembership Membership @relation("WeightEventRecorderMemberships", fields: [organizationId, recordedByMembershipId, recordedByUserId], references: [organizationId, id, userId], onDelete: Restrict)
   employee       EmployeeProfile? @relation(fields: [organizationId, employeeId], references: [organizationId, id], onDelete: Restrict)
   productionRole ProductionRole?  @relation(fields: [organizationId, productionRoleId], references: [organizationId, id], onDelete: Restrict)
+  location       Location?        @relation(fields: [organizationId, locationId], references: [organizationId, id], onDelete: Restrict)
+  correctsWeightEvent WeightEvent? @relation("WeightCorrections", fields: [organizationId, productId, correctsWeightEventId], references: [organizationId, productId, id], onDelete: Restrict)
+  corrections    WeightEvent[]    @relation("WeightCorrections")
 
+  @@unique([organizationId, id])
+  @@unique([organizationId, productId, id])
   @@index([organizationId, productId, occurredAt])
   @@index([organizationId, employeeId, occurredAt])
+  @@index([organizationId, locationId, occurredAt])
+  @@index([organizationId, correctsWeightEventId])
 }
 
 model AuditLog {
@@ -692,4 +707,20 @@ model IdempotencyKey {
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, expiresAt])
+}
+
+model RateLimitBucket {
+  scope           String   @db.VarChar(50)
+  keyHash         String   @db.Char(64)
+  windowStartedAt DateTime @db.Timestamptz(6)
+  count           Int      @default(0)
+  expiresAt       DateTime @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  organizationId  String?  @db.Uuid
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([scope, keyHash, windowStartedAt])
+  @@index([expiresAt])
+  @@index([organizationId, scope, windowStartedAt])
 }

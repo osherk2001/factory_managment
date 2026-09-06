@@ -1,10 +1,13 @@
 "use client";
+import { useMessages } from "@/lib/i18n/client";
+
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
+import { CameraScanner } from "./camera-scanner";
 import type { FormEvent } from "react";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
+import { getMessages } from "@/lib/i18n";
 import { WORKER_CONTEXT_ERROR_CODES } from "@/modules/worker-context";
 
 import { workerScanAction } from "./actions";
@@ -18,7 +21,7 @@ import type {
   WorkerScanResult,
 } from "./scan-types";
 
-const messages = getMessages(defaultLocale);
+
 
 function setFreshIdempotencyKey(event: FormEvent<HTMLFormElement>) {
   const input = event.currentTarget.elements.namedItem("idempotencyKey");
@@ -27,7 +30,7 @@ function setFreshIdempotencyKey(event: FormEvent<HTMLFormElement>) {
   }
 }
 
-function outcomeMessage(outcome: ScanOutcome): string {
+function outcomeMessage(messages: ReturnType<typeof getMessages>, outcome: ScanOutcome): string {
   switch (outcome) {
     case "RECEIVED":
       return messages.worker.scanSuccess;
@@ -48,7 +51,7 @@ function outcomeMessage(outcome: ScanOutcome): string {
   }
 }
 
-function statusMessage(status: WorkerScanResult["status"]): string {
+function statusMessage(messages: ReturnType<typeof getMessages>, status: WorkerScanResult["status"]): string {
   switch (status) {
     case "IN_PROGRESS":
       return messages.worker.inProgress;
@@ -65,10 +68,11 @@ function statusMessage(status: WorkerScanResult["status"]): string {
   }
 }
 
-function errorMessage(
+function errorMessage(messages: ReturnType<typeof getMessages>, 
   errorCode: WorkerScanActionState["errorCode"],
 ): string | null {
   switch (errorCode) {
+    case "RATE_LIMITED": return messages.operations.errors.RATE_LIMITED;
     case "BARCODE_REQUIRED":
       return messages.worker.barcodeRequired;
     case "BARCODE_NOT_FOUND":
@@ -127,12 +131,13 @@ function errorMessage(
 }
 
 function ResultDetails({ result }: { result: WorkerScanResult }) {
+  const messages = useMessages();
   return (
     <div className="space-y-4" data-testid="scan-result">
       <div>
         <p className="text-lg font-semibold">{result.serialNumber}</p>
         <p aria-live="polite" className="mt-1 text-sm">
-          {outcomeMessage(result.scanOutcome)}
+          {outcomeMessage(messages, result.scanOutcome)}
         </p>
       </div>
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
@@ -140,7 +145,7 @@ function ResultDetails({ result }: { result: WorkerScanResult }) {
           <dt className="font-medium text-muted-foreground">
             {messages.worker.scanProductStatus}
           </dt>
-          <dd>{statusMessage(result.status)}</dd>
+          <dd>{statusMessage(messages, result.status)}</dd>
         </div>
         <div>
           <dt className="font-medium text-muted-foreground">
@@ -207,6 +212,7 @@ function LifecycleResultDetails({
 }: {
   result: NonNullable<WorkerScanActionState["lifecycleResult"]>;
 }) {
+  const messages = useMessages();
   const status =
     result.status === "READY_FOR_HANDOFF"
       ? messages.worker.readyForHandoff
@@ -253,6 +259,7 @@ function WorkflowStageSelection({
   isSubmitting: boolean;
   productId: string;
 }) {
+  const messages = useMessages();
   return (
     <section
       className="space-y-4 rounded-xl border border-amber-300 bg-amber-50 p-5"
@@ -328,6 +335,7 @@ function TakeoverForm({
   formAction: WorkerScanFormAction;
   isSubmitting: boolean;
 }) {
+  const messages = useMessages();
   const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
 
   return (
@@ -366,6 +374,7 @@ function FinishConfirmation({
   formAction: WorkerScanFormAction;
   isSubmitting: boolean;
 }) {
+  const messages = useMessages();
   const [cancelled, setCancelled] = useState(false);
   const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
 
@@ -422,6 +431,7 @@ function CompletedReturnConfirmation({
   formAction: WorkerScanFormAction;
   isSubmitting: boolean;
 }) {
+  const messages = useMessages();
   const [cancelled, setCancelled] = useState(false);
   const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
 
@@ -472,12 +482,15 @@ export function WorkerScanPage({
 }: {
   data: ActiveProductionHandlingContextDto;
 }) {
+  const messages = useMessages();
   const [initialIdempotencyKey] = useState(() => crypto.randomUUID());
   const [state, formAction, isSubmitting] = useActionState(
     workerScanAction,
     initialWorkerScanActionState,
   );
-  const scanError = errorMessage(state.errorCode);
+  const scanError = errorMessage(messages, state.errorCode);
+  const barcodeInput = useRef<HTMLInputElement>(null);
+  const scanForm = useRef<HTMLFormElement>(null);
 
   function handleScanSubmit(event: FormEvent<HTMLFormElement>) {
     setFreshIdempotencyKey(event);
@@ -512,13 +525,15 @@ export function WorkerScanPage({
         </header>
 
         <section className="space-y-4 rounded-xl border bg-white p-5 shadow-sm">
-          <form action={formAction} onSubmit={handleScanSubmit}>
+          <CameraScanner disabled={isSubmitting} onDecoded={(value) => { if (barcodeInput.current) barcodeInput.current.value = value; scanForm.current?.requestSubmit(); }} />
+          <form ref={scanForm} action={formAction} onSubmit={handleScanSubmit}>
             <label className="grid gap-2 text-sm font-medium" htmlFor="barcode">
               {messages.worker.barcode}
               <input
                 autoFocus
                 className="min-h-14 rounded-xl border px-4 text-lg"
                 data-testid="worker-scan-barcode"
+                ref={barcodeInput}
                 id="barcode"
                 name="barcode"
                 placeholder={messages.worker.barcode}

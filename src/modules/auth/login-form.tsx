@@ -1,15 +1,16 @@
 "use client";
+import { useMessages } from "@/lib/i18n/client";
+
 
 import { useActionState } from "react";
 
-import { defaultLocale, getMessages } from "@/lib/i18n";
-
 import { loginAction, type LoginActionState } from "./actions";
 
-const messages = getMessages(defaultLocale);
+
 const initialState: LoginActionState = { errorCode: null };
 
 export function LoginForm() {
+  const messages = useMessages();
   const [state, formAction, isSubmitting] = useActionState(
     loginAction,
     initialState,

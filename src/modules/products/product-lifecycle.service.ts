@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db/client";
 import { hasPermission, requirePermission } from "@/modules/authorization";
+import { limitProductionRequest } from "@/lib/security/rate-limit";
 import type { TenantContext } from "@/modules/authorization";
 import { resolveEmployeeContext } from "@/modules/worker-context/employee-context.service";
 import { resolveCurrentProductionHandlingContextInTransaction } from "@/modules/scanning/handling-context.service";
@@ -489,6 +490,7 @@ async function startMutation(
 ) {
   const parsed = parseLifecycleInput(input);
   const tenant = await requirePermission(permission);
+  await limitProductionRequest(tenant);
   const requestHash = hashLifecycleRequest(operation, parsed);
   const replay = await findLifecycleReplay(
     tenant,
@@ -770,6 +772,7 @@ export async function returnCompletedProductToProcess(
   const parsed = parseReturnToProcessInput(input);
   const tenant = await requirePermission("products.reopen");
   await requirePermission("scans.perform");
+  await limitProductionRequest(tenant);
   const requestHash = hashLifecycleRequest(
     "products.return_to_process",
     parsed,
