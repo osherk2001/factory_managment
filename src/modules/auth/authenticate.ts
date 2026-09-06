@@ -33,7 +33,12 @@ export async function authenticateCredentials(
   }
 
   try {
-    await consumeRateLimit("login-account", parsedCredentials.data.username.toLowerCase(), 10, 15 * 60000);
+    await consumeRateLimit(
+      "login-account",
+      parsedCredentials.data.username.toLowerCase(),
+      10,
+      15 * 60000,
+    );
     await consumeRateLimit("login-global", "credentials", 300, 60000);
   } catch {
     logger.warn({ event: "login_throttled" }, "Login unavailable or throttled");
@@ -67,5 +72,9 @@ export async function authenticateCredentials(
 
   logger.info({ event: "login_succeeded", userId: user.id }, "Login succeeded");
 
-  return { id: user.id, username: user.username, sessionVersion: user.sessionVersion };
+  return {
+    id: user.id,
+    username: user.username,
+    sessionVersion: user.sessionVersion,
+  };
 }

@@ -1,4 +1,3 @@
-
 import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
@@ -7,8 +6,6 @@ import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { requirePermission } from "@/modules/authorization";
 import { listWorkflowTemplates } from "@/modules/workflows/server";
 import { WorkflowManagement } from "@/modules/workflows/workflow-management";
-
-
 
 export default async function WorkflowsPage() {
   const messages = await getRequestMessages();

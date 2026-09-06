@@ -1,11 +1,9 @@
 "use client";
 import { useMessages } from "@/lib/i18n/client";
 
-
 import { useActionState } from "react";
 
 import { loginAction, type LoginActionState } from "./actions";
-
 
 const initialState: LoginActionState = { errorCode: null };
 

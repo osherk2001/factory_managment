@@ -1,5 +1,21 @@
 # FactoryFlow
 
+## Current local preview
+
+The preview runs at http://localhost:3100 against the isolated
+`factoryflow_verification` PostgreSQL schema. Sign-in credentials are in the
+ignored `.env.preview.local` file. Restart with
+`node scripts/verify-isolated.mjs dev` after starting PostgreSQL.
+
+The implementation now includes issues, decimal weight corrections, manager
+search and dashboards, CSV reports, administration, camera scanning and QR
+printing. See [operations](docs/OPERATIONS.md) and the
+[deployment and recovery runbook](docs/PRODUCTION_RUNBOOK.md).
+Production deployment and physical factory hardware acceptance remain open.
+The original local database has conflicting active test workflow versions;
+its migration repair remains pending owner approval. The preview preserves
+that original data.
+
 FactoryFlow is a multi-tenant manufacturing execution system. This repository
 currently contains the Phase 1 foundation, the Phase 2 core database model,
 the Phase 3 development fixtures, the Phase 4 authentication and

@@ -1,7 +1,6 @@
 "use client";
 import { useMessages } from "@/lib/i18n/client";
 
-
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
 import type { FormEvent } from "react";
@@ -19,13 +18,13 @@ import type {
 } from "./product-lifecycle-types";
 import type { ProductLifecyclePageData } from "./product-lifecycle.service";
 
-
-
-function errorMessage(messages: ReturnType<typeof getMessages>, 
+function errorMessage(
+  messages: ReturnType<typeof getMessages>,
   errorCode: ProductLifecycleActionState["errorCode"],
 ): string | null {
   switch (errorCode) {
-    case "RATE_LIMITED": return messages.operations.errors.RATE_LIMITED;
+    case "RATE_LIMITED":
+      return messages.operations.errors.RATE_LIMITED;
     case "FORBIDDEN":
       return messages.products.notAuthorized;
     case "UNAUTHORIZED":
@@ -47,7 +46,10 @@ function errorMessage(messages: ReturnType<typeof getMessages>,
   }
 }
 
-function successMessage(messages: ReturnType<typeof getMessages>, operation: ProductLifecycleOperation | null): string {
+function successMessage(
+  messages: ReturnType<typeof getMessages>,
+  operation: ProductLifecycleOperation | null,
+): string {
   switch (operation) {
     case "products.complete":
       return messages.products.productCompleted;

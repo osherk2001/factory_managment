@@ -1,10 +1,5 @@
 export type WeightEventType =
-  | "EXPECTED"
-  | "ISSUED"
-  | "FINAL"
-  | "RETURNED"
-  | "APPROVED_LOSS"
-  | "CORRECTION";
+  "EXPECTED" | "ISSUED" | "FINAL" | "RETURNED" | "APPROVED_LOSS" | "CORRECTION";
 
 export type WeightEventDto = {
   id: string;

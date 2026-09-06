@@ -1,7 +1,6 @@
 "use client";
 import { useMessages } from "@/lib/i18n/client";
 
-
 import {
   useActionState,
   useRef,
@@ -22,8 +21,6 @@ type ProductCreationFormProps = {
   productTypes: readonly ProductOption[];
   workflows: readonly ProductOption[];
 };
-
-
 
 export function ProductCreationForm({
   initialIdempotencyKey,

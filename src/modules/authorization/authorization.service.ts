@@ -22,7 +22,11 @@ async function findUserContextById(
     },
   });
 
-  if (!user || !user.isActive || (sessionVersion !== undefined && user.sessionVersion !== sessionVersion)) {
+  if (
+    !user ||
+    !user.isActive ||
+    (sessionVersion !== undefined && user.sessionVersion !== sessionVersion)
+  ) {
     return null;
   }
 

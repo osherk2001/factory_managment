@@ -1,7 +1,6 @@
 "use client";
 import { useMessages } from "@/lib/i18n/client";
 
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState } from "react";
@@ -21,19 +20,22 @@ import {
 } from "./worker-action-types";
 import type { WorkerHomeData, WorkerProductDto } from "./worker-context.types";
 
-
-
-function formatTargetAt(messages: ReturnType<typeof getMessages>, targetAt: string | null): string {
+function formatTargetAt(
+  messages: ReturnType<typeof getMessages>,
+  targetAt: string | null,
+): string {
   return targetAt
     ? new Date(targetAt).toLocaleString(defaultLocale)
     : messages.worker.notSet;
 }
 
-function finishProductErrorMessage(messages: ReturnType<typeof getMessages>, 
+function finishProductErrorMessage(
+  messages: ReturnType<typeof getMessages>,
   errorCode: ProductLifecycleActionState["errorCode"],
 ): string | null {
   switch (errorCode) {
-    case "RATE_LIMITED": return messages.operations.errors.RATE_LIMITED;
+    case "RATE_LIMITED":
+      return messages.operations.errors.RATE_LIMITED;
     case "PRODUCT_STATE_CHANGED":
       return messages.worker.productStateChanged;
     case "FORBIDDEN":
@@ -111,7 +113,8 @@ function FinishProductForm({ product }: { product: WorkerProductDto }) {
   );
 }
 
-function roleSelectionError(messages: ReturnType<typeof getMessages>, 
+function roleSelectionError(
+  messages: ReturnType<typeof getMessages>,
   errorCode: WorkerRoleSelectionActionState["errorCode"],
 ): string | null {
   if (!errorCode) {

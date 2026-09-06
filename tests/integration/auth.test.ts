@@ -230,7 +230,11 @@ describe.sequential("Phase 4 authentication and authorization", () => {
         username: user.username,
         password: "correct-password-123",
       }),
-    ).resolves.toEqual({ id: user.id, username: user.username, sessionVersion: 0 });
+    ).resolves.toEqual({
+      id: user.id,
+      username: user.username,
+      sessionVersion: 0,
+    });
     await expect(
       authenticateCredentials({
         username: user.username,

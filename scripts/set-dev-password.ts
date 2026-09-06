@@ -42,7 +42,7 @@ async function main() {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { passwordHash, sessionVersion: { increment: 1 } },
     });
     process.stdout.write(`Development password updated for ${username}.\n`);
   } finally {

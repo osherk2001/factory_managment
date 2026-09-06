@@ -1,4 +1,3 @@
-
 import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
@@ -15,8 +14,6 @@ import {
 import type { ActiveProductionHandlingContextDto } from "@/modules/scanning/scan-types";
 
 import { WorkerScanPage } from "@/modules/scanning/worker-scan";
-
-
 
 export default async function WorkerScanRoute() {
   const messages = await getRequestMessages();

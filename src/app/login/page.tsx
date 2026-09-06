@@ -1,11 +1,8 @@
-
 import { getRequestMessages } from "@/lib/i18n/server";
 import type { Metadata } from "next";
 
 import { LoginForm } from "@/modules/auth/login-form";
 import { LanguagePicker } from "@/components/language-picker";
-
-
 
 export async function generateMetadata(): Promise<Metadata> {
   const messages = await getRequestMessages();

@@ -1,4 +1,3 @@
-
 import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
@@ -11,8 +10,6 @@ import {
 import type { WorkerHomeData } from "@/modules/worker-context";
 
 import { WorkerHome } from "@/modules/worker-context/worker-home";
-
-
 
 export default async function WorkerPage() {
   const messages = await getRequestMessages();

@@ -58,7 +58,9 @@ export async function resolveTenantContextForUser(
   }
 
   if (activeMemberships.length > 1) {
-    const selected = activeMemberships.find(m => m.organizationId === user.selectedOrganizationId);
+    const selected = activeMemberships.find(
+      (m) => m.organizationId === user.selectedOrganizationId,
+    );
     if (selected) return { kind: "resolved", context: { ...selected, userId } };
     return {
       kind: "selection-required",

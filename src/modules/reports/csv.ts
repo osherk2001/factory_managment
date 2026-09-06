@@ -5,5 +5,9 @@ export function csvCell(value: unknown): string {
   return '"' + safe.replaceAll('"', '""') + '"';
 }
 export function toCsv(rows: readonly (readonly unknown[])[]): string {
-  return "\uFEFF" + rows.map(row => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  return (
+    "\uFEFF" +
+    rows.map((row) => row.map(csvCell).join(",")).join("\r\n") +
+    "\r\n"
+  );
 }

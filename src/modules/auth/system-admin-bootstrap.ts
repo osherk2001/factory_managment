@@ -33,6 +33,7 @@ export async function bootstrapSystemAdmin(
       where: { id: existingUser.id },
       data: {
         passwordHash: input.passwordHash,
+        sessionVersion: { increment: 1 },
         isActive: true,
         isSystemAdmin: true,
       },

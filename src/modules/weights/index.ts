@@ -5,4 +5,8 @@ export type {
   WeightEventType,
   WeightSummaryDto,
 } from "./weight-types";
-export { WeightError, WEIGHT_ERROR_CODES, isWeightError } from "./weight-errors";
+export {
+  WeightError,
+  WEIGHT_ERROR_CODES,
+  isWeightError,
+} from "./weight-errors";

@@ -57,7 +57,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     session({ session, token }) {
       if (session.user) {
-        session.user.sessionVersion = typeof token.sessionVersion === "number" ? token.sessionVersion : 0;
+        session.user.sessionVersion =
+          typeof token.sessionVersion === "number" ? token.sessionVersion : 0;
         session.user.id =
           (typeof token.userId === "string" ? token.userId : undefined) ??
           token.sub ??

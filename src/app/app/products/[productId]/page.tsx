@@ -1,4 +1,3 @@
-
 import { getRequestMessages } from "@/lib/i18n/server";
 import { notFound, redirect } from "next/navigation";
 
@@ -12,9 +11,10 @@ import { ProductLifecycleControls } from "@/modules/products/product-lifecycle-c
 import { inspectProduct } from "@/modules/products/product-inspection.service";
 import { ProductInspection } from "@/modules/products/product-inspection";
 
-
-
-function formatTimestamp(messages: ReturnType<typeof getMessages>, value: string | null): string {
+function formatTimestamp(
+  messages: ReturnType<typeof getMessages>,
+  value: string | null,
+): string {
   return value
     ? new Date(value).toLocaleString(defaultLocale)
     : messages.products.notSet;
@@ -46,7 +46,10 @@ export default async function ProductDetailsPage({
   }
 
   const { product } = data;
-  const inspection = await inspectProduct(productId, Number((await searchParams).historyPage ?? 1));
+  const inspection = await inspectProduct(
+    productId,
+    Number((await searchParams).historyPage ?? 1),
+  );
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 sm:py-12">
       <section className="mx-auto w-full max-w-2xl space-y-6">

@@ -33,7 +33,14 @@ function getErrorState(
   previousState: WorkerScanActionState,
   error: unknown,
 ): WorkerScanActionState {
-  if (error instanceof RateLimitError) return { ...previousState, result: null, lifecycleResult: null, workflowSelection: null, errorCode: "RATE_LIMITED" };
+  if (error instanceof RateLimitError)
+    return {
+      ...previousState,
+      result: null,
+      lifecycleResult: null,
+      workflowSelection: null,
+      errorCode: "RATE_LIMITED",
+    };
   if (isWorkflowStageSelectionRequiredError(error)) {
     return {
       ...previousState,

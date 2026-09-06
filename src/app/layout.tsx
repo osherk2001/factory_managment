@@ -19,7 +19,9 @@ export default async function RootLayout({
   const locale = await getRequestLocale();
   return (
     <html lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
-      <body><LocaleProvider locale={locale}>{children}</LocaleProvider></body>
+      <body>
+        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }

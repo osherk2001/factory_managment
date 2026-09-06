@@ -7,6 +7,11 @@ import { PERMISSION_CODES } from "../prisma/seed";
 export default async function setup() {
   const database = new PrismaClient();
   try {
-    await database.permission.createMany({ data: PERMISSION_CODES.map(code => ({ code })), skipDuplicates: true });
-  } finally { await database.$disconnect(); }
+    await database.permission.createMany({
+      data: PERMISSION_CODES.map((code) => ({ code })),
+      skipDuplicates: true,
+    });
+  } finally {
+    await database.$disconnect();
+  }
 }

@@ -49,7 +49,9 @@ const eventSelect = {
   correctsWeightEvent: { select: { type: true } },
 } satisfies Prisma.WeightEventSelect;
 
-type WeightRecord = Prisma.WeightEventGetPayload<{ select: typeof eventSelect }>;
+type WeightRecord = Prisma.WeightEventGetPayload<{
+  select: typeof eventSelect;
+}>;
 
 function hashInput(input: unknown): string {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
@@ -84,7 +86,10 @@ function toDto(event: WeightRecord): WeightEventDto {
 }
 
 function isUniqueError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
 }
 
 async function replayWeight(
@@ -94,14 +99,31 @@ async function replayWeight(
   requestHash: string,
 ): Promise<WeightEventDto | null> {
   const existing = await prisma.idempotencyKey.findUnique({
-    where: { organizationId_userId_key: { organizationId: context.organizationId, userId: context.userId, key } },
-    select: { operation: true, requestHash: true, resultReference: true, resultData: true },
+    where: {
+      organizationId_userId_key: {
+        organizationId: context.organizationId,
+        userId: context.userId,
+        key,
+      },
+    },
+    select: {
+      operation: true,
+      requestHash: true,
+      resultReference: true,
+      resultData: true,
+    },
   });
   if (!existing) return null;
-  if (existing.operation !== operation || existing.requestHash !== requestHash) {
+  if (
+    existing.operation !== operation ||
+    existing.requestHash !== requestHash
+  ) {
     throw new WeightError(WEIGHT_ERROR_CODES.IDEMPOTENCY_CONFLICT);
   }
-  const result = z.object({ id: z.string().uuid() }).passthrough().safeParse(existing.resultData);
+  const result = z
+    .object({ id: z.string().uuid() })
+    .passthrough()
+    .safeParse(existing.resultData);
   if (!result.success || result.data.id !== existing.resultReference) {
     throw new WeightError(WEIGHT_ERROR_CODES.FAILED);
   }
@@ -122,7 +144,12 @@ async function createWeightEvent(
     requestHash: string;
   },
 ): Promise<WeightEventDto> {
-  const replay = await replayWeight(context, input.idempotencyKey, input.operation, input.requestHash);
+  const replay = await replayWeight(
+    context,
+    input.idempotencyKey,
+    input.operation,
+    input.requestHash,
+  );
   if (replay) return replay;
 
   try {
@@ -141,10 +168,19 @@ async function createWeightEvent(
       await database.$queryRaw`SELECT "id" FROM "Product" WHERE "organizationId" = ${context.organizationId}::uuid AND "id" = ${input.productId}::uuid FOR UPDATE`;
       const product = await database.product.findFirst({
         where: { id: input.productId, organizationId: context.organizationId },
-        select: { id: true, currentWorkerId: true, currentRoleId: true, currentLocationId: true },
+        select: {
+          id: true,
+          currentWorkerId: true,
+          currentRoleId: true,
+          currentLocationId: true,
+        },
       });
       if (!product) throw new WeightError(WEIGHT_ERROR_CODES.PRODUCT_NOT_FOUND);
-      let attribution = { employeeId: product.currentWorkerId, productionRoleId: product.currentRoleId, locationId: product.currentLocationId };
+      let attribution = {
+        employeeId: product.currentWorkerId,
+        productionRoleId: product.currentRoleId,
+        locationId: product.currentLocationId,
+      };
 
       if (input.correctsWeightEventId) {
         const target = await database.weightEvent.findFirst({
@@ -154,10 +190,20 @@ async function createWeightEvent(
             productId: input.productId,
             type: { not: WeightEventType.CORRECTION },
           },
-          select: { id: true, employeeId: true, productionRoleId: true, locationId: true },
+          select: {
+            id: true,
+            employeeId: true,
+            productionRoleId: true,
+            locationId: true,
+          },
         });
-        if (!target) throw new WeightError(WEIGHT_ERROR_CODES.CORRECTION_TARGET_INVALID);
-        attribution = { employeeId: target.employeeId, productionRoleId: target.productionRoleId, locationId: target.locationId };
+        if (!target)
+          throw new WeightError(WEIGHT_ERROR_CODES.CORRECTION_TARGET_INVALID);
+        attribution = {
+          employeeId: target.employeeId,
+          productionRoleId: target.productionRoleId,
+          locationId: target.locationId,
+        };
       }
 
       const event = await database.weightEvent.create({
@@ -182,7 +228,10 @@ async function createWeightEvent(
           organizationId: context.organizationId,
           actorUserId: context.userId,
           actorMembershipId: context.membershipId,
-          action: input.type === WeightEventType.CORRECTION ? "weight.corrected" : "weight.recorded",
+          action:
+            input.type === WeightEventType.CORRECTION
+              ? "weight.corrected"
+              : "weight.recorded",
           targetType: "WeightEvent",
           targetId: event.id,
           afterData: {
@@ -194,23 +243,41 @@ async function createWeightEvent(
         },
       });
       await database.idempotencyKey.updateMany({
-        where: { organizationId: context.organizationId, userId: context.userId, key: input.idempotencyKey },
+        where: {
+          organizationId: context.organizationId,
+          userId: context.userId,
+          key: input.idempotencyKey,
+        },
         data: { resultReference: event.id, resultData: result },
       });
       return result;
     });
   } catch (error) {
     if (isUniqueError(error)) {
-      const replay = await replayWeight(context, input.idempotencyKey, input.operation, input.requestHash);
+      const replay = await replayWeight(
+        context,
+        input.idempotencyKey,
+        input.operation,
+        input.requestHash,
+      );
       if (replay) return replay;
     }
     if (error instanceof WeightError) throw error;
-    logger.error({ event: "weight_write_failed", organizationId: context.organizationId, productId: input.productId }, "Weight operation failed");
+    logger.error(
+      {
+        event: "weight_write_failed",
+        organizationId: context.organizationId,
+        productId: input.productId,
+      },
+      "Weight operation failed",
+    );
     throw new WeightError(WEIGHT_ERROR_CODES.FAILED);
   }
 }
 
-export async function recordWeightEvent(input: RecordWeightInput): Promise<WeightEventDto> {
+export async function recordWeightEvent(
+  input: RecordWeightInput,
+): Promise<WeightEventDto> {
   const parsed = recordSchema.safeParse(input);
   if (!parsed.success) throw new WeightError(WEIGHT_ERROR_CODES.INVALID_INPUT);
   const context = await requirePermission("weights.create");
@@ -227,7 +294,9 @@ export async function recordWeightEvent(input: RecordWeightInput): Promise<Weigh
     type: normalized.type,
     grams,
     note: normalized.note,
-    occurredAt: normalized.occurredAt ? new Date(normalized.occurredAt) : new Date(),
+    occurredAt: normalized.occurredAt
+      ? new Date(normalized.occurredAt)
+      : new Date(),
     correctsWeightEventId: null,
     idempotencyKey: parsed.data.idempotencyKey,
     operation: "weights.create",
@@ -235,7 +304,9 @@ export async function recordWeightEvent(input: RecordWeightInput): Promise<Weigh
   });
 }
 
-export async function correctWeightEvent(input: CorrectWeightInput): Promise<WeightEventDto> {
+export async function correctWeightEvent(
+  input: CorrectWeightInput,
+): Promise<WeightEventDto> {
   const parsed = correctionSchema.safeParse(input);
   if (!parsed.success) throw new WeightError(WEIGHT_ERROR_CODES.INVALID_INPUT);
   const context = await requirePermission("weights.correct");
@@ -252,7 +323,9 @@ export async function correctWeightEvent(input: CorrectWeightInput): Promise<Wei
     type: WeightEventType.CORRECTION,
     grams,
     note: normalized.note,
-    occurredAt: normalized.occurredAt ? new Date(normalized.occurredAt) : new Date(),
+    occurredAt: normalized.occurredAt
+      ? new Date(normalized.occurredAt)
+      : new Date(),
     correctsWeightEventId: normalized.correctsWeightEventId,
     idempotencyKey: parsed.data.idempotencyKey,
     operation: "weights.correct",
@@ -260,10 +333,13 @@ export async function correctWeightEvent(input: CorrectWeightInput): Promise<Wei
   });
 }
 
-export async function listProductWeightEvents(productId: string): Promise<WeightEventDto[]> {
+export async function listProductWeightEvents(
+  productId: string,
+): Promise<WeightEventDto[]> {
   const context = await requirePermission("weights.read");
   const parsed = z.string().uuid().safeParse(productId);
-  if (!parsed.success) throw new WeightError(WEIGHT_ERROR_CODES.PRODUCT_NOT_FOUND);
+  if (!parsed.success)
+    throw new WeightError(WEIGHT_ERROR_CODES.PRODUCT_NOT_FOUND);
   const events = await prisma.weightEvent.findMany({
     where: { organizationId: context.organizationId, productId: parsed.data },
     orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],
@@ -272,8 +348,13 @@ export async function listProductWeightEvents(productId: string): Promise<Weight
   return events.map(toDto);
 }
 
-export function summarizeWeightEvents(events: readonly WeightEventDto[]): WeightSummaryDto {
-  const totals: Record<Exclude<WeightEventType, "CORRECTION">, Prisma.Decimal> = {
+export function summarizeWeightEvents(
+  events: readonly WeightEventDto[],
+): WeightSummaryDto {
+  const totals: Record<
+    Exclude<WeightEventType, "CORRECTION">,
+    Prisma.Decimal
+  > = {
     EXPECTED: new Prisma.Decimal(0),
     ISSUED: new Prisma.Decimal(0),
     FINAL: new Prisma.Decimal(0),
@@ -286,14 +367,19 @@ export function summarizeWeightEvents(events: readonly WeightEventDto[]): Weight
     const amount = new Prisma.Decimal(event.grams);
     if (event.type === WeightEventType.CORRECTION) {
       correction = correction.plus(amount);
-      const target = event.correctsWeightEventId ? byId.get(event.correctsWeightEventId) : null;
-      if (target && target.type !== WeightEventType.CORRECTION) totals[target.type] = totals[target.type].plus(amount);
+      const target = event.correctsWeightEventId
+        ? byId.get(event.correctsWeightEventId)
+        : null;
+      if (target && target.type !== WeightEventType.CORRECTION)
+        totals[target.type] = totals[target.type].plus(amount);
     } else {
       totals[event.type] = totals[event.type].plus(amount);
     }
   }
   const expectedVariance = totals.ISSUED.minus(totals.EXPECTED);
-  const materialVariance = totals.ISSUED.minus(totals.RETURNED).minus(totals.FINAL).minus(totals.APPROVED_LOSS);
+  const materialVariance = totals.ISSUED.minus(totals.RETURNED)
+    .minus(totals.FINAL)
+    .minus(totals.APPROVED_LOSS);
   return {
     expected: formatDecimal(totals.EXPECTED),
     issued: formatDecimal(totals.ISSUED),
@@ -306,7 +392,9 @@ export function summarizeWeightEvents(events: readonly WeightEventDto[]): Weight
   };
 }
 
-export async function getProductWeightHistory(productId: string): Promise<{ events: WeightEventDto[]; summary: WeightSummaryDto }> {
+export async function getProductWeightHistory(
+  productId: string,
+): Promise<{ events: WeightEventDto[]; summary: WeightSummaryDto }> {
   const events = await listProductWeightEvents(productId);
   return { events, summary: summarizeWeightEvents(events) };
 }
@@ -316,7 +404,8 @@ export async function getProductWeightHistoryForTenant(
   productId: string,
 ): Promise<{ events: WeightEventDto[]; summary: WeightSummaryDto }> {
   const parsed = z.string().uuid().safeParse(productId);
-  if (!parsed.success) throw new WeightError(WEIGHT_ERROR_CODES.PRODUCT_NOT_FOUND);
+  if (!parsed.success)
+    throw new WeightError(WEIGHT_ERROR_CODES.PRODUCT_NOT_FOUND);
   const events = await prisma.weightEvent.findMany({
     where: { organizationId: context.organizationId, productId: parsed.data },
     orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }],

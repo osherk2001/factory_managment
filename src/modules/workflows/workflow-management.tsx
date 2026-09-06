@@ -1,7 +1,6 @@
 "use client";
 import { useMessages } from "@/lib/i18n/client";
 
-
 import { useActionState, useState } from "react";
 
 import { getMessages } from "@/lib/i18n";
@@ -22,8 +21,6 @@ type EditableStage = {
   productionRoleId: string;
 };
 
-
-
 function newStage(position: number): EditableStage {
   return {
     clientId: crypto.randomUUID(),
@@ -34,7 +31,10 @@ function newStage(position: number): EditableStage {
   };
 }
 
-function workflowError(messages: ReturnType<typeof getMessages>, state: WorkflowActionState): string | null {
+function workflowError(
+  messages: ReturnType<typeof getMessages>,
+  state: WorkflowActionState,
+): string | null {
   if (!state.errorCode) return null;
   if (state.errorCode === "FORBIDDEN" || state.errorCode === "UNAUTHORIZED") {
     return messages.workflows.unauthorized;

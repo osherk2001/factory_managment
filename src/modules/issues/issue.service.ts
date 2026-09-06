@@ -11,15 +11,15 @@ import { requirePermission } from "@/modules/authorization";
 import type { TenantContext } from "@/modules/authorization";
 
 import { IssueError, ISSUE_ERROR_CODES } from "./issue-errors";
-import type { CreateIssueInput, IssueDto, ResolveIssueInput } from "./issue-types";
+import type {
+  CreateIssueInput,
+  IssueDto,
+  ResolveIssueInput,
+} from "./issue-types";
 
 const createIssueSchema = z.object({
   productId: z.string().uuid(),
-  type: z
-    .string()
-    .trim()
-    .min(1)
-    .max(100),
+  type: z.string().trim().min(1).max(100),
   description: z.string().trim().max(5000).nullable().optional(),
   idempotencyKey: z.string().trim().min(1).max(255),
 });
@@ -69,7 +69,10 @@ function hashInput(input: unknown): string {
 }
 
 function isUniqueError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
 }
 
 async function replayIssue(
@@ -86,17 +89,31 @@ async function replayIssue(
         key,
       },
     },
-    select: { operation: true, requestHash: true, resultReference: true, resultData: true },
+    select: {
+      operation: true,
+      requestHash: true,
+      resultReference: true,
+      resultData: true,
+    },
   });
 
   if (!existing) return null;
-  if (existing.operation !== operation || existing.requestHash !== requestHash) {
+  if (
+    existing.operation !== operation ||
+    existing.requestHash !== requestHash
+  ) {
     throw new IssueError(ISSUE_ERROR_CODES.IDEMPOTENCY_CONFLICT);
   }
 
-  const parsed = z.object({ id: z.string().uuid() }).passthrough().safeParse(existing.resultData);
+  const parsed = z
+    .object({ id: z.string().uuid() })
+    .passthrough()
+    .safeParse(existing.resultData);
   if (!parsed.success || parsed.data.id !== existing.resultReference) {
-    logger.error({ event: "issue_create_failed", organizationId: context.organizationId }, "Issue creation failed");
+    logger.error(
+      { event: "issue_create_failed", organizationId: context.organizationId },
+      "Issue creation failed",
+    );
     throw new IssueError(ISSUE_ERROR_CODES.FAILED);
   }
   return parsed.data as IssueDto;
@@ -112,7 +129,12 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueDto> {
     description: parsed.data.description?.trim() || null,
   };
   const requestHash = hashInput(normalized);
-  const replay = await replayIssue(context, parsed.data.idempotencyKey, "issues.create", requestHash);
+  const replay = await replayIssue(
+    context,
+    parsed.data.idempotencyKey,
+    "issues.create",
+    requestHash,
+  );
   if (replay) return replay;
 
   try {
@@ -129,7 +151,10 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueDto> {
       });
 
       const product = await database.product.findFirst({
-        where: { id: normalized.productId, organizationId: context.organizationId },
+        where: {
+          id: normalized.productId,
+          organizationId: context.organizationId,
+        },
         select: { id: true },
       });
       if (!product) throw new IssueError(ISSUE_ERROR_CODES.PRODUCT_NOT_FOUND);
@@ -156,33 +181,56 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueDto> {
           action: "issue.created",
           targetType: "Issue",
           targetId: issue.id,
-          afterData: { type: issue.type, status: issue.status, productId: issue.productId },
+          afterData: {
+            type: issue.type,
+            status: issue.status,
+            productId: issue.productId,
+          },
         },
       });
       await database.idempotencyKey.updateMany({
-        where: { organizationId: context.organizationId, userId: context.userId, key: parsed.data.idempotencyKey },
+        where: {
+          organizationId: context.organizationId,
+          userId: context.userId,
+          key: parsed.data.idempotencyKey,
+        },
         data: { resultReference: issue.id, resultData: result },
       });
       return result;
     });
   } catch (error) {
     if (isUniqueError(error)) {
-      const result = await replayIssue(context, parsed.data.idempotencyKey, "issues.create", requestHash);
+      const result = await replayIssue(
+        context,
+        parsed.data.idempotencyKey,
+        "issues.create",
+        requestHash,
+      );
       if (result) return result;
     }
     if (error instanceof IssueError) throw error;
-    logger.error({ event: "issue_create_failed", organizationId: context.organizationId }, "Issue creation failed");
+    logger.error(
+      { event: "issue_create_failed", organizationId: context.organizationId },
+      "Issue creation failed",
+    );
     throw new IssueError(ISSUE_ERROR_CODES.FAILED);
   }
 }
 
-export async function resolveIssue(input: ResolveIssueInput): Promise<IssueDto> {
+export async function resolveIssue(
+  input: ResolveIssueInput,
+): Promise<IssueDto> {
   const parsed = resolveIssueSchema.safeParse(input);
   if (!parsed.success) throw new IssueError(ISSUE_ERROR_CODES.INVALID_INPUT);
   const context = await requirePermission("issues.resolve");
   const resolution = parsed.data.resolution?.trim() || null;
   const requestHash = hashInput({ issueId: parsed.data.issueId, resolution });
-  const replay = await replayIssue(context, parsed.data.idempotencyKey, "issues.resolve", requestHash);
+  const replay = await replayIssue(
+    context,
+    parsed.data.idempotencyKey,
+    "issues.resolve",
+    requestHash,
+  );
   if (replay) return replay;
 
   try {
@@ -199,14 +247,22 @@ export async function resolveIssue(input: ResolveIssueInput): Promise<IssueDto> 
       });
 
       const current = await database.issue.findFirst({
-        where: { id: parsed.data.issueId, organizationId: context.organizationId },
+        where: {
+          id: parsed.data.issueId,
+          organizationId: context.organizationId,
+        },
         select: issueSelect,
       });
       if (!current) throw new IssueError(ISSUE_ERROR_CODES.NOT_FOUND);
-      if (current.status !== IssueStatus.OPEN) throw new IssueError(ISSUE_ERROR_CODES.INVALID_STATE);
+      if (current.status !== IssueStatus.OPEN)
+        throw new IssueError(ISSUE_ERROR_CODES.INVALID_STATE);
 
       const changed = await database.issue.updateMany({
-        where: { id: current.id, organizationId: context.organizationId, status: IssueStatus.OPEN },
+        where: {
+          id: current.id,
+          organizationId: context.organizationId,
+          status: IssueStatus.OPEN,
+        },
         data: {
           status: IssueStatus.RESOLVED,
           resolvedAt: new Date(),
@@ -215,9 +271,11 @@ export async function resolveIssue(input: ResolveIssueInput): Promise<IssueDto> 
           resolution,
         },
       });
-      if (changed.count !== 1) throw new IssueError(ISSUE_ERROR_CODES.INVALID_STATE);
+      if (changed.count !== 1)
+        throw new IssueError(ISSUE_ERROR_CODES.INVALID_STATE);
       const resolved = await database.issue.findFirstOrThrow({
-        where: { id: current.id, organizationId: context.organizationId }, select: issueSelect,
+        where: { id: current.id, organizationId: context.organizationId },
+        select: issueSelect,
       });
       const result = toDto(resolved);
       await database.auditLog.create({
@@ -229,27 +287,45 @@ export async function resolveIssue(input: ResolveIssueInput): Promise<IssueDto> 
           targetType: "Issue",
           targetId: resolved.id,
           beforeData: { status: current.status },
-          afterData: { status: resolved.status, resolvedAt: resolved.resolvedAt?.toISOString(), resolution },
+          afterData: {
+            status: resolved.status,
+            resolvedAt: resolved.resolvedAt?.toISOString(),
+            resolution,
+          },
         },
       });
       await database.idempotencyKey.updateMany({
-        where: { organizationId: context.organizationId, userId: context.userId, key: parsed.data.idempotencyKey },
+        where: {
+          organizationId: context.organizationId,
+          userId: context.userId,
+          key: parsed.data.idempotencyKey,
+        },
         data: { resultReference: resolved.id, resultData: result },
       });
       return result;
     });
   } catch (error) {
     if (isUniqueError(error)) {
-      const result = await replayIssue(context, parsed.data.idempotencyKey, "issues.resolve", requestHash);
+      const result = await replayIssue(
+        context,
+        parsed.data.idempotencyKey,
+        "issues.resolve",
+        requestHash,
+      );
       if (result) return result;
     }
     if (error instanceof IssueError) throw error;
-    logger.error({ event: "issue_resolve_failed", organizationId: context.organizationId }, "Issue resolution failed");
+    logger.error(
+      { event: "issue_resolve_failed", organizationId: context.organizationId },
+      "Issue resolution failed",
+    );
     throw new IssueError(ISSUE_ERROR_CODES.FAILED);
   }
 }
 
-export async function listProductIssues(productId: string): Promise<IssueDto[]> {
+export async function listProductIssues(
+  productId: string,
+): Promise<IssueDto[]> {
   const context = await requirePermission("issues.read");
   return listProductIssuesForTenant(context, productId);
 }
@@ -268,6 +344,10 @@ export async function listProductIssuesForTenant(
   return issues.map(toDto);
 }
 
-export async function countOpenIssuesForTenant(context: TenantContext): Promise<number> {
-  return prisma.issue.count({ where: { organizationId: context.organizationId, status: IssueStatus.OPEN } });
+export async function countOpenIssuesForTenant(
+  context: TenantContext,
+): Promise<number> {
+  return prisma.issue.count({
+    where: { organizationId: context.organizationId, status: IssueStatus.OPEN },
+  });
 }

@@ -3,9 +3,17 @@
 @tailwind utilities;
 
 @media print {
-  body * { visibility: hidden; }
-  #barcode-label, #barcode-label * { visibility: visible; }
-  #barcode-label { position: absolute; inset: 0 auto auto 0; }
+  body * {
+    visibility: hidden;
+  }
+  #barcode-label,
+  #barcode-label * {
+    visibility: visible;
+  }
+  #barcode-label {
+    position: absolute;
+    inset: 0 auto auto 0;
+  }
 }
 
 @layer base {

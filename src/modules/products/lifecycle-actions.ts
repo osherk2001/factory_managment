@@ -48,7 +48,12 @@ function errorState(
   previousState: ProductLifecycleActionState,
   error: unknown,
 ): ProductLifecycleActionState {
-  if (error instanceof RateLimitError) return { result: null, operation: previousState.operation, errorCode: "RATE_LIMITED" };
+  if (error instanceof RateLimitError)
+    return {
+      result: null,
+      operation: previousState.operation,
+      errorCode: "RATE_LIMITED",
+    };
   if (isProductLifecycleError(error)) {
     return {
       result: null,

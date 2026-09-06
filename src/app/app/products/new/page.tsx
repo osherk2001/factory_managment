@@ -1,4 +1,3 @@
-
 import { getRequestMessages } from "@/lib/i18n/server";
 import { randomUUID } from "node:crypto";
 
@@ -10,8 +9,6 @@ import { requirePermission } from "@/modules/authorization/permission.service";
 
 import { ProductCreationForm } from "@/modules/products/product-form";
 import { listActiveWorkflowTemplatesForOrganization } from "@/modules/workflows/server";
-
-
 
 export default async function NewProductPage() {
   const messages = await getRequestMessages();

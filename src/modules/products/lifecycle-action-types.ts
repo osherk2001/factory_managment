@@ -7,7 +7,12 @@ import type {
 export type ProductLifecycleActionState = {
   result: ProductLifecycleResultDto | null;
   operation: ProductLifecycleOperation | null;
-  errorCode: ProductLifecycleErrorCode | "FORBIDDEN" | "UNAUTHORIZED" | "RATE_LIMITED" | null;
+  errorCode:
+    | ProductLifecycleErrorCode
+    | "FORBIDDEN"
+    | "UNAUTHORIZED"
+    | "RATE_LIMITED"
+    | null;
 };
 
 export const initialProductLifecycleActionState: ProductLifecycleActionState = {

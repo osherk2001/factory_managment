@@ -1,9 +1,8 @@
 "use client";
 import { useMessages } from "@/lib/i18n/client";
 
-
 import Link from "next/link";
-import { useActionState, useRef, useState } from "react";
+import { startTransition, useActionState, useRef, useState } from "react";
 import { CameraScanner } from "./camera-scanner";
 import type { FormEvent } from "react";
 
@@ -21,8 +20,6 @@ import type {
   WorkerScanResult,
 } from "./scan-types";
 
-
-
 function setFreshIdempotencyKey(event: FormEvent<HTMLFormElement>) {
   const input = event.currentTarget.elements.namedItem("idempotencyKey");
   if (input instanceof HTMLInputElement) {
@@ -30,7 +27,10 @@ function setFreshIdempotencyKey(event: FormEvent<HTMLFormElement>) {
   }
 }
 
-function outcomeMessage(messages: ReturnType<typeof getMessages>, outcome: ScanOutcome): string {
+function outcomeMessage(
+  messages: ReturnType<typeof getMessages>,
+  outcome: ScanOutcome,
+): string {
   switch (outcome) {
     case "RECEIVED":
       return messages.worker.scanSuccess;
@@ -51,7 +51,10 @@ function outcomeMessage(messages: ReturnType<typeof getMessages>, outcome: ScanO
   }
 }
 
-function statusMessage(messages: ReturnType<typeof getMessages>, status: WorkerScanResult["status"]): string {
+function statusMessage(
+  messages: ReturnType<typeof getMessages>,
+  status: WorkerScanResult["status"],
+): string {
   switch (status) {
     case "IN_PROGRESS":
       return messages.worker.inProgress;
@@ -68,11 +71,13 @@ function statusMessage(messages: ReturnType<typeof getMessages>, status: WorkerS
   }
 }
 
-function errorMessage(messages: ReturnType<typeof getMessages>, 
+function errorMessage(
+  messages: ReturnType<typeof getMessages>,
   errorCode: WorkerScanActionState["errorCode"],
 ): string | null {
   switch (errorCode) {
-    case "RATE_LIMITED": return messages.operations.errors.RATE_LIMITED;
+    case "RATE_LIMITED":
+      return messages.operations.errors.RATE_LIMITED;
     case "BARCODE_REQUIRED":
       return messages.worker.barcodeRequired;
     case "BARCODE_NOT_FOUND":
@@ -525,7 +530,17 @@ export function WorkerScanPage({
         </header>
 
         <section className="space-y-4 rounded-xl border bg-white p-5 shadow-sm">
-          <CameraScanner disabled={isSubmitting} onDecoded={(value) => { if (barcodeInput.current) barcodeInput.current.value = value; scanForm.current?.requestSubmit(); }} />
+          <CameraScanner
+            disabled={isSubmitting}
+            onDecoded={(value) => {
+              if (barcodeInput.current) barcodeInput.current.value = value;
+              const form = new FormData();
+              form.set("barcode", value);
+              form.set("operation", "scan");
+              form.set("idempotencyKey", crypto.randomUUID());
+              startTransition(() => formAction(form));
+            }}
+          />
           <form ref={scanForm} action={formAction} onSubmit={handleScanSubmit}>
             <label className="grid gap-2 text-sm font-medium" htmlFor="barcode">
               {messages.worker.barcode}

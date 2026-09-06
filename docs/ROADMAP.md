@@ -1,5 +1,21 @@
 # ROADMAP.md
 
+## Current completion work
+
+The request to finish the project authorizes completing the remaining MVP
+increments. Phases 10–12 are implemented: issue resolution, append-only decimal
+weights and corrections, inspection/search/dashboard and audited CSV reports.
+Administration, account language/tenant selection, QR printing and camera
+scanning are also implemented. Details and calculation semantics are in
+[OPERATIONS.md](OPERATIONS.md).
+
+Phase 13 has database rate limits, structured error logging, security headers,
+session revocation, dependency remediation, standalone packaging and a verified
+local backup/restore procedure. Production hosting, monitoring destinations,
+load targets and physical phone/printer acceptance require the actual deployment
+environment; see [PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md). The sections
+below retain the original phased plan for reference.
+
 ## Phase 0 — Product and architecture definition
 
 Status: complete enough to begin implementation.
