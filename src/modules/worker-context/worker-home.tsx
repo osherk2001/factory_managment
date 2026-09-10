@@ -20,6 +20,20 @@ import {
 } from "./worker-action-types";
 import type { WorkerHomeData, WorkerProductDto } from "./worker-context.types";
 
+import {
+  QrCode,
+  UserCheck,
+  Building2,
+  Calendar,
+  Layers,
+  MapPin,
+  Clock,
+  AlertTriangle,
+  CheckCircle2,
+  Tag,
+  ArrowRight,
+} from "lucide-react";
+
 function formatTargetAt(
   messages: ReturnType<typeof getMessages>,
   targetAt: string | null,
@@ -77,16 +91,21 @@ function FinishProductForm({ product }: { product: WorkerProductDto }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="mt-4 space-y-3 border-t pt-4">
       {errorMessage ? (
-        <p className="text-destructive text-sm" role="alert">
+        <p className="text-destructive text-xs font-semibold" role="alert">
           {errorMessage}
         </p>
       ) : null}
       {state.result ? (
-        <p aria-live="polite" className="text-sm" data-testid="work-finished">
-          {messages.worker.workFinished}
-        </p>
+        <div
+          aria-live="polite"
+          className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800"
+          data-testid="work-finished"
+        >
+          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+          <span>{messages.worker.workFinished}</span>
+        </div>
       ) : (
         <form action={formAction} onSubmit={setFreshKey}>
           <input name="operation" type="hidden" value="products.finish" />
@@ -98,14 +117,17 @@ function FinishProductForm({ product }: { product: WorkerProductDto }) {
             type="hidden"
           />
           <button
-            className="min-h-14 w-full rounded-xl bg-primary px-5 py-3 text-base font-semibold text-primary-foreground"
+            className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-base font-bold text-white shadow-md transition-all hover:bg-blue-700 active:scale-[0.99] disabled:opacity-50"
             data-testid="finish-product"
             disabled={isSubmitting}
             type="submit"
           >
-            {isSubmitting
-              ? messages.worker.finishSubmitting
-              : messages.worker.finishWork}
+            <CheckCircle2 className="h-5 w-5" />
+            <span>
+              {isSubmitting
+                ? messages.worker.finishSubmitting
+                : messages.worker.finishWork}
+            </span>
           </button>
         </form>
       )}
@@ -136,86 +158,95 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
   const messages = useMessages();
   return (
     <article
-      className="space-y-4 rounded-xl border bg-white p-5 shadow-sm"
+      className="priority-card bg-white space-y-4"
       data-testid="worker-product-card"
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 border-b pb-3">
         <div>
-          <h3
-            className="text-lg font-semibold"
-            data-testid="worker-product-serial"
-          >
-            {product.serialNumber}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {messages.worker.status}: {messages.worker.inProgress}
+          <div className="flex items-center gap-2">
+            <Tag className="h-4 w-4 text-blue-600" />
+            <h3
+              className="text-xl font-bold tracking-tight text-slate-900"
+              data-testid="worker-product-serial"
+            >
+              {product.serialNumber}
+            </h3>
+          </div>
+          <p className="mt-1 text-xs font-semibold text-amber-700">
+            {messages.worker.status}: <span className="priority-badge-in-progress">{messages.worker.inProgress}</span>
           </p>
         </div>
         {product.isUrgent ? (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
-            {messages.worker.urgent}
+          <span className="priority-badge-urgent">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <span>{messages.worker.urgent}</span>
           </span>
         ) : null}
       </div>
 
-      <dl className="grid gap-3 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="font-medium text-muted-foreground">
-            {messages.worker.targetDate}
+      <dl className="grid gap-3 text-xs sm:grid-cols-2">
+        <div className="rounded-lg bg-slate-50 p-2.5">
+          <dt className="flex items-center gap-1 font-semibold text-slate-500">
+            <Clock className="h-3.5 w-3.5" />
+            <span>{messages.worker.targetDate}</span>
           </dt>
-          <dd>{formatTargetAt(messages, product.targetAt)}</dd>
+          <dd className="mt-1 font-medium text-slate-900">{formatTargetAt(messages, product.targetAt)}</dd>
         </div>
-        <div>
-          <dt className="font-medium text-muted-foreground">
-            {messages.worker.productionOrder}
+        <div className="rounded-lg bg-slate-50 p-2.5">
+          <dt className="flex items-center gap-1 font-semibold text-slate-500">
+            <Tag className="h-3.5 w-3.5" />
+            <span>{messages.worker.productionOrder}</span>
           </dt>
-          <dd>
+          <dd className="mt-1 font-medium text-slate-900">
             {product.productionOrder?.orderNumber ?? messages.worker.notSet}
           </dd>
         </div>
-        <div>
-          <dt className="font-medium text-muted-foreground">
-            {messages.worker.productType}
+        <div className="rounded-lg bg-slate-50 p-2.5">
+          <dt className="flex items-center gap-1 font-semibold text-slate-500">
+            <Layers className="h-3.5 w-3.5" />
+            <span>{messages.worker.productType}</span>
           </dt>
-          <dd>{product.productType?.name ?? messages.worker.notSet}</dd>
+          <dd className="mt-1 font-medium text-slate-900">{product.productType?.name ?? messages.worker.notSet}</dd>
         </div>
-        <div>
-          <dt className="font-medium text-muted-foreground">
-            {messages.worker.currentProductionRole}
+        <div className="rounded-lg bg-slate-50 p-2.5">
+          <dt className="flex items-center gap-1 font-semibold text-slate-500">
+            <UserCheck className="h-3.5 w-3.5" />
+            <span>{messages.worker.currentProductionRole}</span>
           </dt>
-          <dd>{product.currentRole?.name ?? messages.worker.notSet}</dd>
+          <dd className="mt-1 font-medium text-slate-900">{product.currentRole?.name ?? messages.worker.notSet}</dd>
         </div>
-        <div>
-          <dt className="font-medium text-muted-foreground">
-            {messages.worker.currentLocation}
+        <div className="rounded-lg bg-slate-50 p-2.5">
+          <dt className="flex items-center gap-1 font-semibold text-slate-500">
+            <MapPin className="h-3.5 w-3.5" />
+            <span>{messages.worker.currentLocation}</span>
           </dt>
-          <dd>{product.currentLocation?.name ?? messages.worker.notSet}</dd>
+          <dd className="mt-1 font-medium text-slate-900">{product.currentLocation?.name ?? messages.worker.notSet}</dd>
         </div>
         {product.workflow ? (
           <>
-            <div>
-              <dt className="font-medium text-muted-foreground">
+            <div className="rounded-lg bg-blue-50/60 p-2.5">
+              <dt className="font-semibold text-blue-700">
                 {messages.worker.currentWorkflowStage}
               </dt>
-              <dd data-testid="worker-current-stage">
+              <dd className="mt-1 font-bold text-blue-900" data-testid="worker-current-stage">
                 {product.workflow.currentStage?.name ?? messages.worker.notSet}
               </dd>
             </div>
-            <div>
-              <dt className="font-medium text-muted-foreground">
+            <div className="rounded-lg bg-indigo-50/60 p-2.5">
+              <dt className="font-semibold text-indigo-700">
                 {messages.worker.expectedWorkflowStage}
               </dt>
-              <dd data-testid="worker-expected-stage">
+              <dd className="mt-1 font-bold text-indigo-900" data-testid="worker-expected-stage">
                 {product.workflow.expectedNextStage?.name ??
                   messages.worker.notSet}
               </dd>
             </div>
             {product.workflow.deviation ? (
-              <div data-testid="worker-workflow-deviation">
-                <dt className="font-medium text-muted-foreground">
+              <div className="rounded-lg bg-rose-50 p-2.5" data-testid="worker-workflow-deviation">
+                <dt className="font-semibold text-rose-700">
                   {messages.worker.workflowDeviation}
                 </dt>
-                <dd>{messages.worker.yes}</dd>
+                <dd className="mt-1 font-bold text-rose-900">{messages.worker.yes}</dd>
               </div>
             ) : null}
           </>
@@ -256,13 +287,13 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
   return (
     <div className="space-y-4">
       {activeRole ? (
-        <p className="text-lg" data-testid="active-production-role">
+        <p className="text-base font-bold text-blue-600" data-testid="active-production-role">
           {activeRole.name}
         </p>
       ) : null}
       <div>
         <h2
-          className="text-xl font-semibold"
+          className="text-lg font-bold text-slate-900"
           data-testid="worker-role-selection-heading"
         >
           {roleSelectionRequired
@@ -271,7 +302,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         </h2>
         {roleSelectionRequired ? (
           <p
-            className="mt-1 text-sm text-muted-foreground"
+            className="mt-1 text-xs text-amber-700 font-semibold"
             data-testid="role-selection-required"
           >
             {messages.worker.roleSelectionRequired}
@@ -280,7 +311,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
       </div>
 
       {errorMessage ? (
-        <p aria-live="polite" className="text-destructive text-sm" role="alert">
+        <p aria-live="polite" className="text-destructive text-xs font-semibold" role="alert">
           {errorMessage}
         </p>
       ) : null}
@@ -289,10 +320,10 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         {data.productionRoleState.availableRoles.map((role) => (
           <button
             aria-pressed={activeRoleId === role.id}
-            className={`min-h-16 rounded-xl border px-4 py-3 text-start text-base font-semibold transition-colors ${
+            className={`min-h-14 rounded-xl border px-4 py-3 text-start text-xs font-bold transition-all shadow-xs ${
               activeRoleId === role.id
-                ? "border-primary bg-primary text-primary-foreground"
-                : "bg-white hover:bg-muted"
+                ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50"
             }`}
             disabled={isSubmitting}
             key={role.id}
@@ -300,8 +331,8 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
             type="submit"
             value={role.id}
           >
-            <span className="block">{role.name}</span>
-            <span className="mt-1 block text-xs font-normal opacity-80">
+            <span className="block text-sm">{role.name}</span>
+            <span className="mt-0.5 block text-[11px] font-normal opacity-80">
               {role.code}
             </span>
           </button>
@@ -316,85 +347,105 @@ export function WorkerHome({ data }: { data: WorkerHomeData }) {
   const roleState = data.productionRoleState;
 
   return (
-    <main className="min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+    <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-10">
       <section
-        className="mx-auto w-full max-w-3xl space-y-8"
+        className="mx-auto w-full max-w-4xl space-y-6"
         data-testid="worker-home"
       >
-        <header className="space-y-3">
-          <p className="text-sm font-medium text-muted-foreground">
-            {messages.worker.myWork}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">
+        {/* Header Profile Banner */}
+        <header className="space-y-3 rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+              <QrCode className="h-3.5 w-3.5" />
+              <span>{messages.worker.myWork}</span>
+            </span>
+            <span className="text-xs font-semibold text-slate-400">
+              Priority Floor Workstation
+            </span>
+          </div>
+
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             {messages.worker.title}
           </h1>
-          <dl className="grid gap-3 rounded-xl border bg-white p-5 text-sm shadow-sm sm:grid-cols-2">
-            <div>
-              <dt className="font-medium text-muted-foreground">
-                {messages.worker.employee}
-              </dt>
-              <dd data-testid="worker-display-name">
-                {data.employee.displayName}
-              </dd>
+
+          <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-xs font-medium sm:grid-cols-2 border border-slate-100">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-blue-600" />
+              <div>
+                <dt className="text-slate-500">{messages.worker.employee}</dt>
+                <dd className="font-bold text-slate-900" data-testid="worker-display-name">
+                  {data.employee.displayName}
+                </dd>
+              </div>
             </div>
-            <div>
-              <dt className="font-medium text-muted-foreground">
-                {messages.worker.organization}
-              </dt>
-              <dd data-testid="worker-organization">
-                {data.employee.organizationName}
-              </dd>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <div>
+                <dt className="text-slate-500">{messages.worker.organization}</dt>
+                <dd className="font-bold text-slate-900" data-testid="worker-organization">
+                  {data.employee.organizationName}
+                </dd>
+              </div>
             </div>
           </dl>
         </header>
 
-        <section className="space-y-4 rounded-xl border bg-white p-5 shadow-sm">
+        {/* Active Role & Scanner Card */}
+        <section className="space-y-5 rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
           <div>
-            <h2 className="text-xl font-semibold">
+            <h2 className="text-lg font-bold text-slate-900">
               {messages.worker.activeProductionRole}
             </h2>
             {roleState.activeProductionRole &&
             roleState.availableRoles.length === 1 ? (
-              <p className="mt-2 text-lg" data-testid="active-production-role">
+              <p className="mt-1 text-base font-semibold text-blue-600" data-testid="active-production-role">
                 {roleState.activeProductionRole.name}
               </p>
             ) : null}
           </div>
 
           {roleState.kind === "NO_PRODUCTION_ROLES" ? (
-            <p data-testid="no-production-role">
+            <p className="text-xs font-semibold text-rose-600" data-testid="no-production-role">
               {messages.worker.noProductionRoleAssigned}
             </p>
           ) : (
             <RoleSelection data={data} />
           )}
 
-          <Link
-            className="inline-flex min-h-12 items-center rounded-xl bg-primary px-5 py-3 font-semibold text-primary-foreground"
-            data-testid="worker-scan-link"
-            href="/app/worker/scan"
-          >
-            {messages.worker.scanProduct}
-          </Link>
+          <div className="pt-2">
+            <Link
+              className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3.5 text-base font-bold text-white shadow-md transition-all hover:bg-emerald-700 active:scale-[0.99] sm:w-auto"
+              data-testid="worker-scan-link"
+              href="/app/worker/scan"
+            >
+              <QrCode className="h-5 w-5" />
+              <span>{messages.worker.scanProduct}</span>
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </section>
 
+        {/* Assigned Products Section */}
         <section className="space-y-4">
           <div>
-            <h2 className="text-2xl font-semibold">
+            <h2 className="text-xl font-bold text-slate-900">
               {messages.worker.myProducts}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-0.5 text-xs text-slate-500">
               {messages.worker.myProductsDescription}
             </p>
           </div>
 
           {data.products.length === 0 ? (
-            <p
-              className="rounded-xl border border-dashed bg-white p-6 text-sm"
+            <div
+              className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center"
               data-testid="no-worker-products"
             >
-              {messages.worker.noProductsCurrentlyAssigned}
-            </p>
+              <CheckCircle2 className="mx-auto h-8 w-8 text-slate-400" />
+              <p className="mt-2 text-xs font-medium text-slate-600">
+                {messages.worker.noProductsCurrentlyAssigned}
+              </p>
+            </div>
           ) : (
             <div className="grid gap-4" data-testid="worker-products">
               {data.products.map((product) => (

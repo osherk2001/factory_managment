@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   requireAuthenticatedUser,
@@ -7,7 +6,8 @@ import {
 } from "@/modules/authorization";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { getRequestMessages } from "@/lib/i18n/server";
-import { LanguagePicker } from "@/components/language-picker";
+import { Navbar } from "@/components/layout/Navbar";
+
 export default async function AppLayout({
   children,
 }: {
@@ -22,9 +22,13 @@ export default async function AppLayout({
   }
   const m = await getRequestMessages();
   let permissions: ReadonlySet<string> = new Set();
+  let orgName: string | undefined;
   try {
     const context = await getTenantContext();
-    if (context) permissions = await getPermissionsForMembership(context);
+    if (context) {
+      permissions = await getPermissionsForMembership(context);
+      orgName = context.organizationId;
+    }
   } catch (error) {
     if (!isFactoryFlowAuthError(error)) throw error;
   }
@@ -56,28 +60,16 @@ export default async function AppLayout({
     links.push({ href: "/app/audit", label: m.operations.audit });
   if (user.isSystemAdmin)
     links.push({ href: "/app/platform", label: m.operations.platform });
+
   return (
-    <>
-      <header className="border-b bg-white px-4 py-3 print:hidden">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-          <Link href="/app" className="font-bold tracking-tight">
-            {m.app.title}
-          </Link>
-          <LanguagePicker />
-        </div>
-        <nav className="mx-auto mt-3 flex max-w-6xl gap-2 overflow-x-auto pb-1">
-          {links.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="shrink-0 rounded-md px-3 py-2 text-sm hover:bg-muted"
-            >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-      </header>
-      {children}
-    </>
+    <div className="min-h-screen bg-slate-50/50">
+      <Navbar
+        appName={m.app.title as string}
+        links={links}
+        organizationName={orgName}
+        userName={user.username}
+      />
+      <main>{children}</main>
+    </div>
   );
 }
