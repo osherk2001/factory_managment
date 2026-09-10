@@ -20,7 +20,9 @@ import {
   X,
   Building2,
   User,
+  LogOut,
 } from "lucide-react";
+import { logoutAction } from "@/modules/auth/actions";
 
 export interface NavLinkItem {
   href: string;
@@ -30,17 +32,18 @@ export interface NavLinkItem {
 interface NavbarProps {
   appName: string;
   links: NavLinkItem[];
-  languagePicker: ReactNode;
+  languagePicker?: ReactNode;
   organizationName?: string | null;
   userName?: string | null;
+  exitLabel?: string;
 }
 
 export function Navbar({
   appName,
   links,
-  languagePicker,
   organizationName,
   userName,
+  exitLabel = "Exit",
 }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -143,17 +146,32 @@ export function Navbar({
           </div>
         </form>
 
-        {/* Right Controls: User Info & Language Picker */}
-        <div className="flex items-center gap-3">
+        {/* Right Controls: User Info & Exit Button */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
           {userName ? (
-            <div className="hidden items-center gap-1.5 text-xs text-slate-300 sm:flex">
+            <Link
+              href="/app/settings"
+              className="flex items-center gap-1.5 rounded-lg border border-transparent px-2.5 py-1 text-xs text-slate-300 transition-colors hover:border-slate-700 hover:bg-slate-800 hover:text-white"
+              title={userName}
+            >
               <User className="h-3.5 w-3.5 text-slate-400" />
-              <span className="font-medium text-white">{userName}</span>
-            </div>
+              <span className="hidden max-w-[120px] truncate font-medium sm:inline sm:max-w-[180px]">
+                {userName}
+              </span>
+            </Link>
           ) : null}
-          <div className="rounded-lg border border-slate-700 bg-slate-800 p-1">
-            {languagePicker}
-          </div>
+
+          {/* Exit / Sign Out Button */}
+          <form action={logoutAction} className="inline-flex">
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/90 px-3 py-1.5 text-xs font-semibold text-slate-200 shadow-xs transition-colors hover:border-rose-600 hover:bg-rose-600 hover:text-white"
+              title={exitLabel}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>{exitLabel}</span>
+            </button>
+          </form>
 
           {/* Mobile Hamburger Toggle */}
           <button
@@ -232,6 +250,19 @@ export function Navbar({
                 </Link>
               );
             })}
+          </div>
+
+          {/* Mobile Exit Action */}
+          <div className="mt-3 border-t border-slate-800 pt-3">
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-900/40 bg-rose-950/30 py-2.5 text-xs font-semibold text-rose-200 transition-colors hover:bg-rose-600 hover:text-white"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>{exitLabel}</span>
+              </button>
+            </form>
           </div>
         </div>
       )}

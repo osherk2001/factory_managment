@@ -75,8 +75,8 @@ export async function FactorySetup({
     r.permissions.every((p) => can(p)),
   );
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-      <h1 className="text-3xl font-semibold">{m.administration}</h1>
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-900">{m.administration}</h2>
       {can("users.manage") && can("access_roles.manage") ? (
         <section className={section}>
           <h2 className="text-xl font-semibold">{m.newUser}</h2>
@@ -313,6 +313,6 @@ export async function FactorySetup({
           </section>
         ) : null}
       </div>
-    </main>
+    </div>
   );
 }

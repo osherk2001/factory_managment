@@ -7,7 +7,6 @@ import {
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { getRequestMessages } from "@/lib/i18n/server";
 import { Navbar } from "@/components/layout/Navbar";
-import { LanguagePicker } from "@/components/language-picker";
 
 export default async function AppLayout({
   children,
@@ -45,16 +44,19 @@ export default async function AppLayout({
     links.push({ href: "/app/products/new", label: m.products.create });
   if (permissions.has("workflows.manage"))
     links.push({ href: "/app/workflows", label: m.workflows.title });
-  if (
-    [
-      "users.manage",
-      "access_roles.manage",
-      "production_roles.manage",
-      "locations.manage",
-      "products.create",
-    ].some((p) => permissions.has(p))
-  )
-    links.push({ href: "/app/settings", label: m.operations.administration });
+  const hasAdminPermission = [
+    "users.manage",
+    "access_roles.manage",
+    "production_roles.manage",
+    "locations.manage",
+    "products.create",
+  ].some((p) => permissions.has(p));
+  links.push({
+    href: "/app/settings",
+    label: hasAdminPermission
+      ? m.operations.administration
+      : m.operations.settings,
+  });
   if (permissions.has("reports.export"))
     links.push({ href: "/app/reports", label: m.operations.reports });
   if (permissions.has("audit.read"))
@@ -67,9 +69,9 @@ export default async function AppLayout({
       <Navbar
         appName={m.app.title as string}
         links={links}
-        languagePicker={<LanguagePicker />}
         organizationName={orgName}
         userName={user.username}
+        exitLabel={m.app.logout}
       />
       <main>{children}</main>
     </div>

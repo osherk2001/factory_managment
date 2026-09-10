@@ -110,6 +110,12 @@ export const operations = {
     selectOrganization: "Select organization",
     language: "Language",
     logout: "Sign out",
+    settings: "Settings",
+    userSettings: "User settings",
+    languagePreference: "Language preference",
+    languageDescription:
+      "Choose your preferred interface language for FactoryFlow.",
+    userProfile: "User profile",
     transfer: "Move to location",
     transferHint:
       "Available after work is finished. Choose the product’s new physical location.",
@@ -254,6 +260,11 @@ export const operations = {
     selectOrganization: "בחירת ארגון",
     language: "שפה",
     logout: "יציאה",
+    settings: "הגדרות",
+    userSettings: "הגדרות משתמש",
+    languagePreference: "העדפת שפה",
+    languageDescription: "בחר את שפת הממשק המועדפת עליך במערכת FactoryFlow.",
+    userProfile: "פרופיל משתמש",
     transfer: "העברה למיקום",
     transferHint:
       "זמין לאחר סיום העבודה. יש לבחור את המיקום הפיזי החדש של המוצר.",
@@ -397,6 +408,12 @@ export const operations = {
     selectOrganization: "Выбрать организацию",
     language: "Язык",
     logout: "Выйти",
+    settings: "Настройки",
+    userSettings: "Настройки пользователя",
+    languagePreference: "Предпочитаемый язык",
+    languageDescription:
+      "Выберите предпочитаемый язык интерфейса для FactoryFlow.",
+    userProfile: "Профиль пользователя",
     transfer: "Переместить",
     transferHint:
       "Доступно после завершения работы. Выберите новое физическое местоположение.",

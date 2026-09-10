@@ -134,12 +134,14 @@ test.describe.serial("MVP manager and camera journeys", () => {
         },
       }),
     ).toBe(1);
-    const language = page.locator("header").locator("form").first();
+    // Verify exit button is in the top header
+    await expect(page.locator("header form button")).toBeVisible();
+    await page.goto("/app/settings");
+    const language = page.locator('form:has(select[name="locale"])');
     await language.locator('select[name="locale"]').selectOption("en");
-    await language.getByRole("button").click();
+    await language.locator('button[type="submit"]').click();
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-    await page.goto("/app/settings");
     await expect(
       page.getByRole("heading", { name: "Factory setup" }),
     ).toBeVisible();
