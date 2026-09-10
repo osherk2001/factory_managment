@@ -38,8 +38,15 @@ export default async function ProductsPage({
     if (error instanceof ApplicationError && error.code === "INVALID_INPUT")
       return (
         <main className="mx-auto max-w-5xl p-6">
-          <p role="alert" className="text-destructive font-semibold">{o.errors.INVALID_INPUT}</p>
-          <Link href="/app/products" className="mt-2 inline-block text-blue-600 underline">{o.products}</Link>
+          <p role="alert" className="text-destructive font-semibold">
+            {o.errors.INVALID_INPUT}
+          </p>
+          <Link
+            href="/app/products"
+            className="mt-2 inline-block text-blue-600 underline"
+          >
+            {o.products}
+          </Link>
         </main>
       );
     if (error instanceof ApplicationError) notFound();
@@ -59,15 +66,35 @@ export default async function ProductsPage({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "CREATED":
-        return <span className="priority-badge-created">{m.products.statusValues.CREATED}</span>;
+        return (
+          <span className="priority-badge-created">
+            {m.products.statusValues.CREATED}
+          </span>
+        );
       case "IN_PROGRESS":
-        return <span className="priority-badge-in-progress">{m.products.statusValues.IN_PROGRESS}</span>;
+        return (
+          <span className="priority-badge-in-progress">
+            {m.products.statusValues.IN_PROGRESS}
+          </span>
+        );
       case "READY_FOR_HANDOFF":
-        return <span className="priority-badge-in-progress bg-indigo-50 text-indigo-700 ring-indigo-600/20">{m.products.statusValues.READY_FOR_HANDOFF}</span>;
+        return (
+          <span className="priority-badge-in-progress bg-indigo-50 text-indigo-700 ring-indigo-600/20">
+            {m.products.statusValues.READY_FOR_HANDOFF}
+          </span>
+        );
       case "COMPLETED":
-        return <span className="priority-badge-completed">{m.products.statusValues.COMPLETED}</span>;
+        return (
+          <span className="priority-badge-completed">
+            {m.products.statusValues.COMPLETED}
+          </span>
+        );
       case "CANCELLED":
-        return <span className="priority-badge-rework">{m.products.statusValues.CANCELLED}</span>;
+        return (
+          <span className="priority-badge-rework">
+            {m.products.statusValues.CANCELLED}
+          </span>
+        );
       default:
         return <span className="priority-badge-created">{status}</span>;
     }
@@ -76,7 +103,7 @@ export default async function ProductsPage({
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
       {/* Header Banner */}
-      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
+      <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-600">
             <Package className="h-4 w-4" />
@@ -86,13 +113,14 @@ export default async function ProductsPage({
             {o.products}
           </h1>
           <p className="text-xs text-slate-500">
-            {o.total}: <strong className="text-slate-900">{data.total}</strong> products tracked
+            {o.total}: <strong className="text-slate-900">{data.total}</strong>{" "}
+            products tracked
           </p>
         </div>
 
         {data.canCreate ? (
           <Link
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700 active:scale-95"
+            className="shadow-xs flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 active:scale-95"
             href="/app/products/new"
           >
             <PlusCircle className="h-4 w-4" />
@@ -102,14 +130,14 @@ export default async function ProductsPage({
       </header>
 
       {/* Filter Toolbar */}
-      <form className="space-y-4 rounded-2xl bg-white p-5 shadow-sm border border-slate-200">
+      <form className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between border-b pb-3 text-xs font-bold text-slate-700">
           <div className="flex items-center gap-1.5">
             <Filter className="h-4 w-4 text-blue-600" />
             <span>Search & Filter Toolbar</span>
           </div>
           <button
-            className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700"
+            className="shadow-xs rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-blue-700"
             type="submit"
           >
             {o.filter}
@@ -118,7 +146,7 @@ export default async function ProductsPage({
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <label className="text-xs font-semibold text-slate-700 sm:col-span-2">
-            <span className="block mb-1">{o.search}</span>
+            <span className="mb-1 block">{o.search}</span>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -132,11 +160,11 @@ export default async function ProductsPage({
           </label>
 
           <label className="text-xs font-semibold text-slate-700">
-            <span className="block mb-1">{o.status}</span>
+            <span className="mb-1 block">{o.status}</span>
             <select
               name="status"
               defaultValue={data.filters.status ?? ""}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50/50 py-2 px-3 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
             >
               <option value="">{o.all}</option>
               {(
@@ -162,11 +190,11 @@ export default async function ProductsPage({
             ] as const
           ).map(([name, label, options]) => (
             <label className="text-xs font-semibold text-slate-700" key={name}>
-              <span className="block mb-1">{label}</span>
+              <span className="mb-1 block">{label}</span>
               <select
                 name={name}
                 defaultValue={data.filters[name] ?? ""}
-                className="w-full rounded-lg border border-slate-300 bg-slate-50/50 py-2 px-3 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                className="w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
               >
                 <option value="">{o.all}</option>
                 {options.map((v) => (
@@ -180,7 +208,7 @@ export default async function ProductsPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-6 border-t pt-3 text-xs font-medium text-slate-700">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
+          <label className="flex cursor-pointer select-none items-center gap-2">
             <input
               type="checkbox"
               name="urgent"
@@ -194,7 +222,7 @@ export default async function ProductsPage({
             </span>
           </label>
 
-          <label className="flex items-center gap-2 cursor-pointer select-none">
+          <label className="flex cursor-pointer select-none items-center gap-2">
             <input
               type="checkbox"
               name="delayed"
@@ -209,7 +237,7 @@ export default async function ProductsPage({
           </label>
 
           {data.canReadIssues ? (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
+            <label className="flex cursor-pointer select-none items-center gap-2">
               <input
                 type="checkbox"
                 name="issues"
@@ -240,7 +268,7 @@ export default async function ProductsPage({
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-2 border-b pb-3">
                 <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     Serial #
                   </span>
                   <h2 className="text-lg font-bold text-slate-900 group-hover:text-blue-600">
@@ -252,22 +280,24 @@ export default async function ProductsPage({
 
               <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <User className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                   <span className="font-medium text-slate-900">
                     {p.worker ?? m.products.notSet}
                   </span>
                   <span className="text-slate-400">·</span>
-                  <span className="text-slate-500">{p.role ?? m.products.notSet}</span>
+                  <span className="text-slate-500">
+                    {p.role ?? m.products.notSet}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                   <span>{p.location ?? m.products.notSet}</span>
                 </div>
 
                 {p.order || p.customer ? (
                   <div className="flex items-center gap-2">
-                    <Tag className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    <Tag className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                     <span>
                       {p.order} {p.customer}
                     </span>
@@ -280,9 +310,7 @@ export default async function ProductsPage({
             {(p.isUrgent || p.delayed || p.openIssues) && (
               <div className="mt-4 flex flex-wrap gap-1.5 border-t pt-3 text-[11px] font-semibold">
                 {p.isUrgent ? (
-                  <span className="priority-badge-urgent">
-                    {o.urgent}
-                  </span>
+                  <span className="priority-badge-urgent">{o.urgent}</span>
                 ) : null}
                 {p.delayed ? (
                   <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-amber-900">
@@ -316,7 +344,7 @@ export default async function ProductsPage({
           {data.filters.page > 1 ? (
             <Link
               href={href(data.filters.page - 1)}
-              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-xs hover:bg-slate-50"
+              className="shadow-xs flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
             >
               <ChevronLeft className="h-4 w-4" />
               <span>{o.previous}</span>
@@ -325,7 +353,7 @@ export default async function ProductsPage({
           {data.filters.page * 30 < data.total ? (
             <Link
               href={href(data.filters.page + 1)}
-              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-xs hover:bg-slate-50"
+              className="shadow-xs flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
             >
               <span>{o.next}</span>
               <ChevronRight className="h-4 w-4" />

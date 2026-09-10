@@ -134,9 +134,9 @@ export function Navbar({
               value={quickSearch}
               onChange={(e) => setQuickSearch(e.target.value)}
               placeholder="Search barcode or serial... (Press '/' to focus)"
-              className="w-full rounded-lg bg-slate-800/90 py-1.5 pl-9 pr-9 text-xs text-white placeholder-slate-400 border border-slate-700 focus:border-blue-500 focus:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800/90 py-1.5 pl-9 pr-9 text-xs text-white placeholder-slate-400 focus:border-blue-500 focus:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-mono text-slate-300">
+            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded bg-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-slate-300">
               /
             </kbd>
           </div>
@@ -150,7 +150,7 @@ export function Navbar({
               <span className="font-medium text-white">{userName}</span>
             </div>
           ) : null}
-          <div className="rounded-lg bg-slate-800 p-1 border border-slate-700">
+          <div className="rounded-lg border border-slate-700 bg-slate-800 p-1">
             <LanguagePicker />
           </div>
 
@@ -183,7 +183,7 @@ export function Navbar({
                 href={l.href}
                 className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                   isActive
-                    ? "bg-blue-600 text-white shadow-xs font-semibold"
+                    ? "shadow-xs bg-blue-600 font-semibold text-white"
                     : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 }`}
               >
@@ -206,7 +206,7 @@ export function Navbar({
                 value={quickSearch}
                 onChange={(e) => setQuickSearch(e.target.value)}
                 placeholder="Search barcode or serial..."
-                className="w-full rounded-lg bg-slate-800 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-400 border border-slate-700 focus:outline-none"
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-400 focus:outline-none"
               />
             </div>
           </form>
@@ -222,7 +222,7 @@ export function Navbar({
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${
                     isActive
-                      ? "bg-blue-600 text-white font-semibold"
+                      ? "bg-blue-600 font-semibold text-white"
                       : "bg-slate-800/80 text-slate-300 hover:bg-slate-800"
                   }`}
                 >

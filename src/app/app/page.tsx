@@ -122,7 +122,7 @@ export default async function AppPage() {
         </div>
 
         <form action={logoutAction}>
-          <button className="flex items-center gap-2 rounded-lg bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-rose-600 hover:text-white border border-slate-700">
+          <button className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-rose-600 hover:text-white">
             <LogOut className="h-4 w-4" />
             <span>{m.app.logout}</span>
           </button>
@@ -131,8 +131,11 @@ export default async function AppPage() {
 
       {/* Organization Switcher if user has multiple org memberships */}
       {memberships.length > 1 ? (
-        <section className="priority-card bg-amber-50/40 border-amber-200">
-          <form action={selectOrganization} className="flex flex-wrap items-center gap-4">
+        <section className="priority-card border-amber-200 bg-amber-50/40">
+          <form
+            action={selectOrganization}
+            className="flex flex-wrap items-center gap-4"
+          >
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-amber-700" />
               <label className="text-sm font-semibold text-slate-800">
@@ -143,7 +146,7 @@ export default async function AppPage() {
               name="organizationId"
               defaultValue={tenant?.organizationId ?? ""}
               required
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium shadow-xs focus:border-blue-500 focus:outline-none"
+              className="shadow-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium focus:border-blue-500 focus:outline-none"
             >
               <option value="">{m.operations.selectOrganization}</option>
               {memberships.map((member) => (
@@ -155,7 +158,7 @@ export default async function AppPage() {
                 </option>
               ))}
             </select>
-            <button className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-amber-700">
+            <button className="shadow-xs rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-amber-700">
               {m.operations.selectOrganization}
             </button>
           </form>
@@ -165,8 +168,12 @@ export default async function AppPage() {
       {/* Operations Quick Action Tiles Grid */}
       <section className="space-y-4">
         <div className="flex items-center justify-between border-b pb-2">
-          <h2 className="text-lg font-bold text-slate-900">Operational Modules</h2>
-          <span className="text-xs font-semibold text-slate-500">Priority Web Workstation</span>
+          <h2 className="text-lg font-bold text-slate-900">
+            Operational Modules
+          </h2>
+          <span className="text-xs font-semibold text-slate-500">
+            Priority Web Workstation
+          </span>
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -190,7 +197,7 @@ export default async function AppPage() {
                     <span>{l.label}</span>
                     <ArrowUpRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-500">
                     {l.desc}
                   </p>
                 </div>
@@ -202,17 +209,21 @@ export default async function AppPage() {
 
       {/* System Admin Platform Gateway */}
       {user.isSystemAdmin ? (
-        <section className="rounded-xl border border-blue-200 bg-blue-50/50 p-5 flex items-center justify-between gap-4">
+        <section className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50/50 p-5">
           <div className="flex items-center gap-3">
             <Server className="h-6 w-6 text-blue-600" />
             <div>
-              <h4 className="text-sm font-bold text-slate-900">Platform Administration</h4>
-              <p className="text-xs text-slate-600">System admin tenant provisioning & multi-factory management.</p>
+              <h4 className="text-sm font-bold text-slate-900">
+                Platform Administration
+              </h4>
+              <p className="text-xs text-slate-600">
+                System admin tenant provisioning & multi-factory management.
+              </p>
             </div>
           </div>
           <Link
             href="/app/platform"
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700"
+            className="shadow-xs flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700"
           >
             <span>{m.operations.platform}</span>
             <ArrowUpRight className="h-4 w-4" />

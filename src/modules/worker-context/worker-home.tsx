@@ -158,7 +158,7 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
   const messages = useMessages();
   return (
     <article
-      className="priority-card bg-white space-y-4"
+      className="priority-card space-y-4 bg-white"
       data-testid="worker-product-card"
     >
       <div className="flex items-start justify-between gap-4 border-b pb-3">
@@ -173,7 +173,10 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
             </h3>
           </div>
           <p className="mt-1 text-xs font-semibold text-amber-700">
-            {messages.worker.status}: <span className="priority-badge-in-progress">{messages.worker.inProgress}</span>
+            {messages.worker.status}:{" "}
+            <span className="priority-badge-in-progress">
+              {messages.worker.inProgress}
+            </span>
           </p>
         </div>
         {product.isUrgent ? (
@@ -190,7 +193,9 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
             <Clock className="h-3.5 w-3.5" />
             <span>{messages.worker.targetDate}</span>
           </dt>
-          <dd className="mt-1 font-medium text-slate-900">{formatTargetAt(messages, product.targetAt)}</dd>
+          <dd className="mt-1 font-medium text-slate-900">
+            {formatTargetAt(messages, product.targetAt)}
+          </dd>
         </div>
         <div className="rounded-lg bg-slate-50 p-2.5">
           <dt className="flex items-center gap-1 font-semibold text-slate-500">
@@ -206,21 +211,27 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
             <Layers className="h-3.5 w-3.5" />
             <span>{messages.worker.productType}</span>
           </dt>
-          <dd className="mt-1 font-medium text-slate-900">{product.productType?.name ?? messages.worker.notSet}</dd>
+          <dd className="mt-1 font-medium text-slate-900">
+            {product.productType?.name ?? messages.worker.notSet}
+          </dd>
         </div>
         <div className="rounded-lg bg-slate-50 p-2.5">
           <dt className="flex items-center gap-1 font-semibold text-slate-500">
             <UserCheck className="h-3.5 w-3.5" />
             <span>{messages.worker.currentProductionRole}</span>
           </dt>
-          <dd className="mt-1 font-medium text-slate-900">{product.currentRole?.name ?? messages.worker.notSet}</dd>
+          <dd className="mt-1 font-medium text-slate-900">
+            {product.currentRole?.name ?? messages.worker.notSet}
+          </dd>
         </div>
         <div className="rounded-lg bg-slate-50 p-2.5">
           <dt className="flex items-center gap-1 font-semibold text-slate-500">
             <MapPin className="h-3.5 w-3.5" />
             <span>{messages.worker.currentLocation}</span>
           </dt>
-          <dd className="mt-1 font-medium text-slate-900">{product.currentLocation?.name ?? messages.worker.notSet}</dd>
+          <dd className="mt-1 font-medium text-slate-900">
+            {product.currentLocation?.name ?? messages.worker.notSet}
+          </dd>
         </div>
         {product.workflow ? (
           <>
@@ -228,7 +239,10 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
               <dt className="font-semibold text-blue-700">
                 {messages.worker.currentWorkflowStage}
               </dt>
-              <dd className="mt-1 font-bold text-blue-900" data-testid="worker-current-stage">
+              <dd
+                className="mt-1 font-bold text-blue-900"
+                data-testid="worker-current-stage"
+              >
                 {product.workflow.currentStage?.name ?? messages.worker.notSet}
               </dd>
             </div>
@@ -236,17 +250,25 @@ function WorkerProductCard({ product }: { product: WorkerProductDto }) {
               <dt className="font-semibold text-indigo-700">
                 {messages.worker.expectedWorkflowStage}
               </dt>
-              <dd className="mt-1 font-bold text-indigo-900" data-testid="worker-expected-stage">
+              <dd
+                className="mt-1 font-bold text-indigo-900"
+                data-testid="worker-expected-stage"
+              >
                 {product.workflow.expectedNextStage?.name ??
                   messages.worker.notSet}
               </dd>
             </div>
             {product.workflow.deviation ? (
-              <div className="rounded-lg bg-rose-50 p-2.5" data-testid="worker-workflow-deviation">
+              <div
+                className="rounded-lg bg-rose-50 p-2.5"
+                data-testid="worker-workflow-deviation"
+              >
                 <dt className="font-semibold text-rose-700">
                   {messages.worker.workflowDeviation}
                 </dt>
-                <dd className="mt-1 font-bold text-rose-900">{messages.worker.yes}</dd>
+                <dd className="mt-1 font-bold text-rose-900">
+                  {messages.worker.yes}
+                </dd>
               </div>
             ) : null}
           </>
@@ -287,7 +309,10 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
   return (
     <div className="space-y-4">
       {activeRole ? (
-        <p className="text-base font-bold text-blue-600" data-testid="active-production-role">
+        <p
+          className="text-base font-bold text-blue-600"
+          data-testid="active-production-role"
+        >
           {activeRole.name}
         </p>
       ) : null}
@@ -302,7 +327,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         </h2>
         {roleSelectionRequired ? (
           <p
-            className="mt-1 text-xs text-amber-700 font-semibold"
+            className="mt-1 text-xs font-semibold text-amber-700"
             data-testid="role-selection-required"
           >
             {messages.worker.roleSelectionRequired}
@@ -311,7 +336,11 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
       </div>
 
       {errorMessage ? (
-        <p aria-live="polite" className="text-destructive text-xs font-semibold" role="alert">
+        <p
+          aria-live="polite"
+          className="text-destructive text-xs font-semibold"
+          role="alert"
+        >
           {errorMessage}
         </p>
       ) : null}
@@ -320,10 +349,10 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         {data.productionRoleState.availableRoles.map((role) => (
           <button
             aria-pressed={activeRoleId === role.id}
-            className={`min-h-14 rounded-xl border px-4 py-3 text-start text-xs font-bold transition-all shadow-xs ${
+            className={`shadow-xs min-h-14 rounded-xl border px-4 py-3 text-start text-xs font-bold transition-all ${
               activeRoleId === role.id
                 ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                : "bg-white text-slate-800 border-slate-200 hover:bg-slate-50"
+                : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
             }`}
             disabled={isSubmitting}
             key={role.id}
@@ -353,7 +382,7 @@ export function WorkerHome({ data }: { data: WorkerHomeData }) {
         data-testid="worker-home"
       >
         {/* Header Profile Banner */}
-        <header className="space-y-3 rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
+        <header className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
               <QrCode className="h-3.5 w-3.5" />
@@ -368,12 +397,15 @@ export function WorkerHome({ data }: { data: WorkerHomeData }) {
             {messages.worker.title}
           </h1>
 
-          <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-xs font-medium sm:grid-cols-2 border border-slate-100">
+          <dl className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4 text-xs font-medium sm:grid-cols-2">
             <div className="flex items-center gap-2">
               <UserCheck className="h-4 w-4 text-blue-600" />
               <div>
                 <dt className="text-slate-500">{messages.worker.employee}</dt>
-                <dd className="font-bold text-slate-900" data-testid="worker-display-name">
+                <dd
+                  className="font-bold text-slate-900"
+                  data-testid="worker-display-name"
+                >
                   {data.employee.displayName}
                 </dd>
               </div>
@@ -381,8 +413,13 @@ export function WorkerHome({ data }: { data: WorkerHomeData }) {
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-blue-600" />
               <div>
-                <dt className="text-slate-500">{messages.worker.organization}</dt>
-                <dd className="font-bold text-slate-900" data-testid="worker-organization">
+                <dt className="text-slate-500">
+                  {messages.worker.organization}
+                </dt>
+                <dd
+                  className="font-bold text-slate-900"
+                  data-testid="worker-organization"
+                >
                   {data.employee.organizationName}
                 </dd>
               </div>
@@ -391,21 +428,27 @@ export function WorkerHome({ data }: { data: WorkerHomeData }) {
         </header>
 
         {/* Active Role & Scanner Card */}
-        <section className="space-y-5 rounded-2xl bg-white p-6 shadow-sm border border-slate-200">
+        <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div>
             <h2 className="text-lg font-bold text-slate-900">
               {messages.worker.activeProductionRole}
             </h2>
             {roleState.activeProductionRole &&
             roleState.availableRoles.length === 1 ? (
-              <p className="mt-1 text-base font-semibold text-blue-600" data-testid="active-production-role">
+              <p
+                className="mt-1 text-base font-semibold text-blue-600"
+                data-testid="active-production-role"
+              >
                 {roleState.activeProductionRole.name}
               </p>
             ) : null}
           </div>
 
           {roleState.kind === "NO_PRODUCTION_ROLES" ? (
-            <p className="text-xs font-semibold text-rose-600" data-testid="no-production-role">
+            <p
+              className="text-xs font-semibold text-rose-600"
+              data-testid="no-production-role"
+            >
               {messages.worker.noProductionRoleAssigned}
             </p>
           ) : (
