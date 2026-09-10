@@ -7,7 +7,6 @@ import {
 } from "@/modules/authorization";
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { prisma } from "@/lib/db/client";
-import { logoutAction } from "@/modules/auth/actions";
 import { selectOrganization } from "@/modules/auth/preferences";
 import {
   QrCode,
@@ -16,7 +15,6 @@ import {
   LayoutDashboard,
   GitMerge,
   FileText,
-  LogOut,
   Building2,
   ShieldCheck,
   Server,
@@ -120,13 +118,6 @@ export default async function AppPage() {
             </p>
           )}
         </div>
-
-        <form action={logoutAction}>
-          <button className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-rose-600 hover:text-white">
-            <LogOut className="h-4 w-4" />
-            <span>{m.app.logout}</span>
-          </button>
-        </form>
       </header>
 
       {/* Organization Switcher if user has multiple org memberships */}
