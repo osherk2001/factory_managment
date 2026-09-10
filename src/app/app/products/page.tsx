@@ -120,7 +120,7 @@ export default async function ProductsPage({
 
         {data.canCreate ? (
           <Link
-            className="shadow-xs flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 active:scale-95"
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700 active:scale-95"
             href="/app/products/new"
           >
             <PlusCircle className="h-4 w-4" />
@@ -137,7 +137,7 @@ export default async function ProductsPage({
             <span>Search & Filter Toolbar</span>
           </div>
           <button
-            className="shadow-xs rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-blue-700"
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700"
             type="submit"
           >
             {o.filter}
@@ -344,7 +344,7 @@ export default async function ProductsPage({
           {data.filters.page > 1 ? (
             <Link
               href={href(data.filters.page - 1)}
-              className="shadow-xs flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
+              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-xs hover:bg-slate-50"
             >
               <ChevronLeft className="h-4 w-4" />
               <span>{o.previous}</span>
@@ -353,7 +353,7 @@ export default async function ProductsPage({
           {data.filters.page * 30 < data.total ? (
             <Link
               href={href(data.filters.page + 1)}
-              className="shadow-xs flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50"
+              className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 shadow-xs hover:bg-slate-50"
             >
               <span>{o.next}</span>
               <ChevronRight className="h-4 w-4" />

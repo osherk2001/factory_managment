@@ -349,7 +349,7 @@ function RoleSelection({ data }: { data: WorkerHomeData }) {
         {data.productionRoleState.availableRoles.map((role) => (
           <button
             aria-pressed={activeRoleId === role.id}
-            className={`shadow-xs min-h-14 rounded-xl border px-4 py-3 text-start text-xs font-bold transition-all ${
+            className={`min-h-14 rounded-xl border px-4 py-3 text-start text-xs font-bold shadow-xs transition-all ${
               activeRoleId === role.id
                 ? "border-blue-600 bg-blue-600 text-white shadow-md"
                 : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"

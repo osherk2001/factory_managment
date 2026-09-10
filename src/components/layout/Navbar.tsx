@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   Factory,
   Home,
@@ -21,7 +21,6 @@ import {
   Building2,
   User,
 } from "lucide-react";
-import { LanguagePicker } from "@/components/language-picker";
 
 export interface NavLinkItem {
   href: string;
@@ -31,6 +30,7 @@ export interface NavLinkItem {
 interface NavbarProps {
   appName: string;
   links: NavLinkItem[];
+  languagePicker: ReactNode;
   organizationName?: string | null;
   userName?: string | null;
 }
@@ -38,6 +38,7 @@ interface NavbarProps {
 export function Navbar({
   appName,
   links,
+  languagePicker,
   organizationName,
   userName,
 }: NavbarProps) {
@@ -151,7 +152,7 @@ export function Navbar({
             </div>
           ) : null}
           <div className="rounded-lg border border-slate-700 bg-slate-800 p-1">
-            <LanguagePicker />
+            {languagePicker}
           </div>
 
           {/* Mobile Hamburger Toggle */}
@@ -183,7 +184,7 @@ export function Navbar({
                 href={l.href}
                 className={`flex shrink-0 items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                   isActive
-                    ? "shadow-xs bg-blue-600 font-semibold text-white"
+                    ? "bg-blue-600 font-semibold text-white shadow-xs"
                     : "text-slate-300 hover:bg-slate-800 hover:text-white"
                 }`}
               >

@@ -7,6 +7,7 @@ import {
 import { isFactoryFlowAuthError } from "@/modules/auth/auth-errors";
 import { getRequestMessages } from "@/lib/i18n/server";
 import { Navbar } from "@/components/layout/Navbar";
+import { LanguagePicker } from "@/components/language-picker";
 
 export default async function AppLayout({
   children,
@@ -66,6 +67,7 @@ export default async function AppLayout({
       <Navbar
         appName={m.app.title as string}
         links={links}
+        languagePicker={<LanguagePicker />}
         organizationName={orgName}
         userName={user.username}
       />

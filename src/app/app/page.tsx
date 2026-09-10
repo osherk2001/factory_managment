@@ -146,7 +146,7 @@ export default async function AppPage() {
               name="organizationId"
               defaultValue={tenant?.organizationId ?? ""}
               required
-              className="shadow-xs rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium focus:border-blue-500 focus:outline-none"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium shadow-xs focus:border-blue-500 focus:outline-none"
             >
               <option value="">{m.operations.selectOrganization}</option>
               {memberships.map((member) => (
@@ -158,7 +158,7 @@ export default async function AppPage() {
                 </option>
               ))}
             </select>
-            <button className="shadow-xs rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-amber-700">
+            <button className="rounded-lg bg-amber-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-amber-700">
               {m.operations.selectOrganization}
             </button>
           </form>
@@ -223,7 +223,7 @@ export default async function AppPage() {
           </div>
           <Link
             href="/app/platform"
-            className="shadow-xs flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700"
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700"
           >
             <span>{m.operations.platform}</span>
             <ArrowUpRight className="h-4 w-4" />

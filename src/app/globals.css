@@ -73,7 +73,8 @@
 
 /* Priority Web Density & Badge Utilities */
 .priority-card {
-  @apply bg-card rounded-xl border p-5 shadow-sm transition-all duration-200 hover:shadow-md;
+  background-color: hsl(var(--card));
+  @apply rounded-xl border p-5 shadow-sm transition-all duration-200 hover:shadow-md;
 }
 
 .priority-table-header {
@@ -97,5 +98,5 @@
 }
 
 .priority-badge-urgent {
-  @apply shadow-xs inline-flex animate-pulse items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white;
+  @apply inline-flex animate-pulse items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white shadow-sm;
 }

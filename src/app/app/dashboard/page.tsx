@@ -35,7 +35,7 @@ export default async function DashboardPage() {
         </div>
 
         <Link
-          className="shadow-xs flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 active:scale-95"
+          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-blue-700 active:scale-95"
           href="/app/products"
         >
           <Package className="h-4 w-4" />
