@@ -97,5 +97,5 @@
 }
 
 .priority-badge-urgent {
-  @apply shadow-xs inline-flex animate-pulse items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white;
+  @apply inline-flex animate-pulse items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-xs font-bold text-white shadow-sm;
 }
